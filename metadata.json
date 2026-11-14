@@ -1,0 +1,6 @@
+{
+  "name": "AcolheMulher - Rede Aberta de Apoio e Serviços Gratuitos",
+  "description": "Plataforma e aplicativo de acolhimento e acesso imediato a serviços públicos e gratuitos para mulheres (jurídico, psicológico, saúde, cursos e proteção) por busca de CEP, 100% sem necessidade de cadastro.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
