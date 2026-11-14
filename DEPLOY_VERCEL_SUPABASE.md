@@ -19,7 +19,7 @@ Todos os arquivos de configuração já estão prontos no repositório. Siga os 
 
 ## Passo 2 — Publicar o Frontend + PWA na Vercel
 1. Acesse [vercel.com](https://vercel.com) e clique em **Add New → Project**.
-2. Conecte seu repositório GitHub: `karolcastro/Reprograma_IA_Agente_de_Projetos`.
+2. Conecte seu repositório GitHub: `karolcastro/acolheMulher`.
 3. A Vercel detectará automaticamente o `vercel.json` já configurado com:
    - Build: `npm run build` | Pasta de saída: `dist`
    - Rotas SPA compatíveis com **PWA offline** (`/sw.js` e `/manifest.webmanifest`)

@@ -10,7 +10,7 @@ export const GitHubIntegrationView: React.FC = () => {
   useEffect(() => {
     const fetchRepo = async () => {
       try {
-        const res = await fetch('https://api.github.com/repos/karolcastro/Reprograma_IA_Agente_de_Projetos');
+        const res = await fetch('https://api.github.com/repos/karolcastro/acolheMulher');
         if (res.ok) {
           const data = await res.json();
           setRepoData(data);
@@ -28,7 +28,7 @@ export const GitHubIntegrationView: React.FC = () => {
     const fullDatabase = {
       projeto: "AcolheMulher",
       autora: "Karol Castro",
-      repositorio: "https://github.com/karolcastro/Reprograma_IA_Agente_de_Projetos",
+      repositorio: "https://github.com/karolcastro/acolheMulher",
       versao: "1.0.0",
       data_exportacao: new Date().toISOString(),
       total_servicos: NATIONAL_SERVICES.length + REGIONAL_SERVICES.length,
@@ -89,17 +89,17 @@ export const GitHubIntegrationView: React.FC = () => {
                 </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-serif font-bold text-white mt-0.5">
-                Reprograma_IA_Agente_de_Projetos
+                acolheMulher
               </h1>
               <div className="text-xs text-stone-400 font-mono mt-1">
-                github.com/karolcastro/Reprograma_IA_Agente_de_Projetos
+                github.com/karolcastro/acolheMulher
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <a
-              href="https://github.com/karolcastro/Reprograma_IA_Agente_de_Projetos"
+              href="https://github.com/karolcastro/acolheMulher"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm"
@@ -202,7 +202,7 @@ export const GitHubIntegrationView: React.FC = () => {
             </button>
 
             <a
-              href="https://github.com/karolcastro/Reprograma_IA_Agente_de_Projetos/issues"
+              href="https://github.com/karolcastro/acolheMulher/issues"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 px-4 py-2 text-xs font-semibold bg-rose-700 hover:bg-rose-800 text-white rounded-xl transition-colors"

@@ -4,7 +4,7 @@
 ### Plataforma Web • Aplicativo Mobile PWA • Widget Integrável para ONGs
 **Acesso imediato, gratuito e 100% sem necessidade de cadastro para mulheres em vulnerabilidade**
 
-[🚀 Acessar Plataforma Online](https://ais-dev-r2gpsznwryzoskbbumntwb-755060135040.us-west2.run.app) · [📦 Repositório GitHub](https://github.com/karolcastro/Reprograma_IA_Agente_de_Projetos) · [📱 Instalar App PWA](#como-instalar-como-app-pwa) · [🔌 Gerador de Widget](#widget-para-ongs)
+[🚀 Acessar Plataforma Online](https://ais-dev-r2gpsznwryzoskbbumntwb-755060135040.us-west2.run.app) · [📦 Repositório GitHub](https://github.com/karolcastro/acolheMulher) · [📱 Instalar App PWA](#como-instalar-como-app-pwa) · [🔌 Gerador de Widget](#widget-para-ongs)
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?logo=typescript&logoColor=white)
@@ -102,10 +102,10 @@ flowchart TD
 ### Passo a passo
 ```bash
 # 1. Clone o repositório
-git clone https://github.com/karolcastro/Reprograma_IA_Agente_de_Projetos.git
+git clone https://github.com/karolcastro/acolheMulher.git
 
 # 2. Acesse a pasta do projeto
-cd Reprograma_IA_Agente_de_Projetos
+cd acolheMulher
 
 # 3. Instale as dependências
 npm install
@@ -123,7 +123,7 @@ A aplicação estará disponível em `http://localhost:3000`.
 Projeto desenvolvido por **Karol Castro** no âmbito da formação da **{reprograma}**.
 
 - **GitHub:** [@karolcastro](https://github.com/karolcastro)
-- **Repositório do Projeto:** [karolcastro/Reprograma_IA_Agente_de_Projetos](https://github.com/karolcastro/Reprograma_IA_Agente_de_Projetos)
+- **Repositório do Projeto:** [karolcastro/acolheMulher](https://github.com/karolcastro/acolheMulher)
 - **Portfólio de Projetos:** Governança com IA, arquitetura orientada a serviços e impacto social.
 
 ---
