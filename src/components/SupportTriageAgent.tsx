@@ -276,7 +276,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                 )}
                 {activeCategoryKey
                   ? SECTION_META[activeCategoryKey].empathyMessage
-                  : `Aqui estão os atendimentos gratuitos ordenados do mais próximo ao mais distante de ${locationLabel}:`}
+                  : `Mostrando atendimentos em até 30 km de ${locationLabel} (no mesmo estado), do mais próximo ao mais distante:`}
               </p>
             )}
           </div>
@@ -387,7 +387,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
               }}
               className="col-span-2 sm:col-span-3 min-h-[38px] px-3 py-2 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-800 text-blue-900 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all"
             >
-              <span>Ver tudo por proximidade do meu CEP (do mais perto ao mais longe)</span>
+              <span>Ver todos os locais em até 30 km do meu CEP</span>
               <ArrowRight className="w-3.5 h-3.5 shrink-0" />
             </button>
           </div>
@@ -425,7 +425,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
           {/* Ordered Results Nearest-to-Farthest Right Inside the Agent */}
           {currentLocation && matchedPreview.rankedServices.length > 0 && (
             <div className="text-[11px] font-semibold text-purple-900">
-              Ordenados do mais próximo ao mais distante de {locationLabel}:
+              Locais em até 30 km em {currentLocation.uf} (mais próximos primeiro) + atendimento nacional:
             </div>
           )}
 

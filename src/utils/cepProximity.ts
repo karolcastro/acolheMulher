@@ -236,11 +236,13 @@ function getNumericCep(cep?: string): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
+export const MAX_PROXIMITY_KM = 30;
+
 /**
- * Orders services strictly by proximity to the user's CEP/location:
- * 1. Physical services within the user's city/metro radius (<= 120 km), nearest first
- * 2. National online / 24h services available everywhere (including the user's CEP)
- * 3. Remaining physical regional services progressively farther away across Brazil
+ * Filters and orders services strictly by proximity to the user's CEP/location:
+ * - Physical regional services MUST be in the same state (UF) AND <= 30 km from the CEP,
+ *   sorted strictly from closest to farthest (0 km -> 30 km).
+ * - National online / 24h phone services follow immediately after local services.
  */
 export function sortServicesByCepProximity(
   services: ServiceItem[],
@@ -261,17 +263,36 @@ export function sortServicesByCepProximity(
       : estimateCoordinatesForCepAndCity(location.cep, location.localidade, location.uf);
 
   const userCepNum = getNumericCep(location.cep);
+  const userUf = location.uf?.trim().toUpperCase();
 
-  const enriched = services.map((service) => {
+  type Enriched = {
+    service: ServiceItem;
+    distanceKm: number | null;
+    distanceLabel: string | null;
+    isNearbyLocal: boolean;
+    tier: number;
+    cepDiff: number;
+  };
+
+  const enriched: Enriched[] = [];
+
+  for (const service of services) {
     if (service.isNationalOnline) {
-      return {
+      enriched.push({
         service,
         distanceKm: null,
         distanceLabel: 'Atendimento nacional no seu CEP',
         isNearbyLocal: false,
-        tier: 1, // Shown right after nearby physical services
+        tier: 1,
         cepDiff: 0,
-      };
+      });
+      continue;
+    }
+
+    // Never show physical services in another state when a CEP/location is active
+    const serviceUf = service.state?.trim().toUpperCase();
+    if (!serviceUf || !userUf || serviceUf !== userUf) {
+      continue;
     }
 
     const serviceCoords =
@@ -279,14 +300,20 @@ export function sortServicesByCepProximity(
         ? { lat: service.lat, lng: service.lng }
         : estimateCoordinatesForCepAndCity(service.cep, service.city, service.state);
 
-    let distanceKm: number | null = null;
-    if (userCoords && serviceCoords) {
-      distanceKm = haversineDistanceKm(
-        userCoords.lat,
-        userCoords.lng,
-        serviceCoords.lat,
-        serviceCoords.lng
-      );
+    if (!userCoords || !serviceCoords) {
+      continue;
+    }
+
+    const distanceKm = haversineDistanceKm(
+      userCoords.lat,
+      userCoords.lng,
+      serviceCoords.lat,
+      serviceCoords.lng
+    );
+
+    // Never show physical services farther than 30 km from the CEP
+    if (distanceKm > MAX_PROXIMITY_KM) {
+      continue;
     }
 
     const serviceCepNum = getNumericCep(service.cep);
@@ -295,26 +322,15 @@ export function sortServicesByCepProximity(
         ? Math.abs(userCepNum - serviceCepNum)
         : Number.MAX_SAFE_INTEGER;
 
-    const sameCity =
-      Boolean(service.city && location.localidade) &&
-      service.city!.toLowerCase() === location.localidade.toLowerCase();
-
-    const isNearbyLocal = sameCity || (distanceKm !== null && distanceKm <= 120);
-
-    // Tier 0: closest physical services in same city / metro radius (<= 120km)
-    // Tier 1: national online / 24h phone services
-    // Tier 2: progressively farther physical services outside metro radius
-    const tier = isNearbyLocal ? 0 : 2;
-
-    return {
+    enriched.push({
       service,
       distanceKm,
-      distanceLabel: distanceKm !== null ? formatDistanceLabel(distanceKm) : null,
-      isNearbyLocal,
-      tier,
+      distanceLabel: formatDistanceLabel(distanceKm),
+      isNearbyLocal: true,
+      tier: 0,
       cepDiff,
-    };
-  });
+    });
+  }
 
   enriched.sort((a, b) => {
     if (a.tier !== b.tier) {
@@ -326,10 +342,6 @@ export function sortServicesByCepProximity(
       if (Math.abs(diff) > 0.25) {
         return diff;
       }
-    } else if (a.distanceKm !== null) {
-      return -1;
-    } else if (b.distanceKm !== null) {
-      return 1;
     }
 
     if (a.cepDiff !== b.cepDiff) {

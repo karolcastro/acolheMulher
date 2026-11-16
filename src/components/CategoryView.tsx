@@ -112,7 +112,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
             <div className="flex flex-wrap items-center gap-2 text-slate-700">
               <MapPin className="w-4 h-4 text-blue-700 shrink-0" />
               <span>
-                Ordenado do mais próximo ao mais distante de{' '}
+                Mostrando locais em até 30 km no seu estado, do mais próximo ao mais distante de{' '}
                 <strong>
                   {currentLocation.localidade} - {currentLocation.uf}
                   {currentLocation.cep && currentLocation.cep !== '00000-000' ? ` (${currentLocation.cep})` : ''}
