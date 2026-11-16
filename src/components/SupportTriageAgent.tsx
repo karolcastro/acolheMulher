@@ -4,6 +4,7 @@ import { useCatalog } from '../context/CatalogContext';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { detectSectionIntent, normalizeText } from '../utils/voiceSearchParser';
 import { RankedServiceItem, sortServicesByCepProximity } from '../utils/cepProximity';
+import { recordAnonymousSearchDemand } from '../utils/demandAnalytics';
 import {
   Sparkles,
   Send,
@@ -131,6 +132,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       setNeedInput('');
       setShowAllNearby(true);
       onUpdateNeed(null, trimmed);
+      void recordAnonymousSearchDemand('geral', currentLocation);
       return;
     }
 
@@ -408,6 +410,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
               onClick={() => {
                 setUnclearNotice(null);
                 setShowAllNearby(true);
+                void recordAnonymousSearchDemand('geral', currentLocation);
               }}
               className="col-span-2 sm:col-span-3 min-h-[38px] px-3 py-2 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-800 text-blue-900 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all"
             >

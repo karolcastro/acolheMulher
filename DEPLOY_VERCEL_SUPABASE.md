@@ -9,9 +9,10 @@ Todos os arquivos de configuração já estão prontos no repositório. Siga os 
 2. No menu lateral, abra **SQL Editor** → **New query**.
 3. Copie todo o conteúdo do arquivo `supabase/migrations/001_schema_rls.sql` e clique em **Run**.
    - Se você já havia rodado a versão anterior do `001_schema_rls.sql`, execute também `supabase/migrations/002_enable_realtime.sql` no SQL Editor para liberar o **Supabase Realtime** nas tabelas `services` e `ngos`.
-   - Isso cria as tabelas `services`, `ngos` e `partner_profiles` com **Row Level Security (`ENABLE` + `FORCE`)** ativada.
-   - O acesso público (`anon`) tem permissão **apenas de leitura (`SELECT`)** em serviços verificados — ninguém consegue alterar ou apagar dados sem autenticação de parceira.
-   - Nenhum dado pessoal, CEP consultado ou histórico de busca das usuárias é gravado no banco (*Zero-PII*).
+   - Para ativar a tabela anônima e agregada de **últimos assuntos e regiões buscadas**, execute também `supabase/migrations/003_search_demand_stats.sql` (cria `search_demand_stats` e a função RPC `record_anonymous_search_demand`).
+   - Isso cria as tabelas `services`, `ngos`, `partner_profiles` e `search_demand_stats` com **Row Level Security (`ENABLE` + `FORCE`)** ativada.
+   - O acesso público (`anon`) tem permissão **apenas de leitura (`SELECT`)** em serviços verificados e totais agregados — ninguém consegue alterar ou apagar dados sem autenticação de parceira.
+   - Nenhum dado pessoal, CEP completo, IP ou histórico individual das usuárias é gravado no banco (*Zero-PII* — as estatísticas guardam apenas totais diários por assunto e Cidade/UF).
 4. Vá em **Project Settings → API** e copie:
    - `Project URL` (`VITE_SUPABASE_URL`)
    - `anon public` key (`VITE_SUPABASE_ANON_KEY`) — **nunca** exponha a chave `service_role` no frontend.

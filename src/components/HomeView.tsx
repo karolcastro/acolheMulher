@@ -3,6 +3,7 @@ import { AppSection, CepInfo } from '../types';
 import { useCatalog } from '../context/CatalogContext';
 import { CepVoiceSearchBar, SearchResolvedPayload } from './CepVoiceSearchBar';
 import { SupportTriageAgent } from './SupportTriageAgent';
+import { recordAnonymousSearchDemand } from '../utils/demandAnalytics';
 import heroWomanRefugeImg from '../assets/images/hero_woman_refuge_1794861297510.jpg';
 import {
   MapPin,
@@ -47,13 +48,23 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const handleHeroSearchResult = (payload: SearchResolvedPayload) => {
     setAgentOpen(true);
+    const resolvedLocation = payload.cepInfo ?? currentLocation;
     if (payload.suggestedSection) {
       setSelectedNeed(payload.suggestedSection);
       setLastUserNeedText(payload.rawQuery);
+      void recordAnonymousSearchDemand(payload.suggestedSection, resolvedLocation);
     } else {
       setSelectedNeed(null);
       setLastUserNeedText(null);
+      if (resolvedLocation) {
+        void recordAnonymousSearchDemand('geral', resolvedLocation);
+      }
     }
+  };
+
+  const handleOpenSection = (section: AppSection) => {
+    void recordAnonymousSearchDemand(section, currentLocation);
+    onSelectSection(section);
   };
 
   const getLoopWidth = (container: HTMLDivElement): number => {
@@ -267,8 +278,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   onUpdateNeed={(section, userText) => {
                     setSelectedNeed(section);
                     setLastUserNeedText(userText ?? null);
+                    if (section) {
+                      void recordAnonymousSearchDemand(section, currentLocation);
+                    }
                   }}
-                  onOpenSection={onSelectSection}
+                  onOpenSection={handleOpenSection}
                   onClearLocation={() => {
                     onUpdateLocation(null);
                     setSelectedNeed(null);
@@ -341,7 +355,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
               <button
                 type="button"
-                onClick={() => onSelectSection('emergencia')}
+                onClick={() => handleOpenSection('emergencia')}
                 className="lg:col-span-7 min-h-[116px] rounded-2xl p-6 sm:p-7 text-left flex items-center justify-between gap-4 bg-gradient-to-r from-red-600 via-rose-600 to-pink-700 hover:from-red-700 hover:to-pink-800 text-white shadow-md hover:shadow-lg transition-all duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2"
               >
                 <div className="flex items-center gap-4 min-w-0">
@@ -365,7 +379,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => onSelectSection('psicologico')}
+                onClick={() => handleOpenSection('psicologico')}
                 className="lg:col-span-5 min-h-[116px] rounded-2xl p-6 sm:p-7 text-left flex items-center justify-between gap-4 bg-white border border-purple-200/90 hover:border-purple-400 shadow-xs hover:shadow-md transition-all duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-700"
               >
                 <div className="flex items-center gap-4 min-w-0">
@@ -394,7 +408,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <button
                   key={tile.id}
                   type="button"
-                  onClick={() => onSelectSection(tile.id)}
+                  onClick={() => handleOpenSection(tile.id)}
                   className={`min-h-[96px] rounded-2xl border border-slate-200/90 bg-white hover:bg-white p-5 text-left flex items-center justify-between gap-3 shadow-xs hover:shadow-md transition-all duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-600 ${tile.hoverBorder}`}
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
@@ -462,7 +476,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => onSelectSection('ongs_apoio')}
+                onClick={() => handleOpenSection('ongs_apoio')}
                 className="min-h-[40px] inline-flex items-center gap-1 pl-2 text-xs font-semibold text-pink-300 hover:text-white whitespace-nowrap shrink-0 hover:underline underline-offset-4 tabular-nums"
               >
                 <span>Ver todas ({ngos.length})</span>

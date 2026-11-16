@@ -4,6 +4,7 @@ import { useCatalog } from '../context/CatalogContext';
 import { ServiceCard } from './ServiceCard';
 import { CepVoiceSearchBar } from './CepVoiceSearchBar';
 import { RankedServiceItem, sortServicesByCepProximity } from '../utils/cepProximity';
+import { recordAnonymousSearchDemand } from '../utils/demandAnalytics';
 import { MapPin, ArrowLeft, ExternalLink } from 'lucide-react';
 
 type HealthSubFilter = 'todos' | 'parto' | 'exames' | 'sus';
@@ -133,6 +134,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
               onLocationResolved={(cepInfo) => {
                 onUpdateLocation(cepInfo);
                 setShowCepChange(false);
+                void recordAnonymousSearchDemand(category, cepInfo);
               }}
               onCancel={currentLocation ? () => setShowCepChange(false) : undefined}
             />

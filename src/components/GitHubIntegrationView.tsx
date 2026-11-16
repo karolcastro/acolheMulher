@@ -1,11 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useCatalog } from '../context/CatalogContext';
-import { Github, ExternalLink, Download, GitPullRequest, Code, Check, Sparkles, Layers, ShieldCheck, Database } from 'lucide-react';
+import { fetchRecentDemandStats, type DemandStatRow } from '../utils/demandAnalytics';
+import { Github, ExternalLink, Download, GitPullRequest, Code, Check, Sparkles, Layers, ShieldCheck, Database, BarChart3, RefreshCw, MapPin } from 'lucide-react';
 
 export const GitHubIntegrationView: React.FC = () => {
   const { nationalServices, regionalServices, ngos, isLiveConnected, isSupabaseConfigured } = useCatalog();
   const [repoData, setRepoData] = useState<any>(null);
   const [copiedTemplate, setCopiedTemplate] = useState(false);
+  const [demandStats, setDemandStats] = useState<DemandStatRow[]>([]);
+  const [demandError, setDemandError] = useState<string | null>(null);
+  const [loadingDemand, setLoadingDemand] = useState(false);
+
+  const loadDemandStats = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    setLoadingDemand(true);
+    const { rows, error } = await fetchRecentDemandStats(18);
+    setDemandStats(rows);
+    setDemandError(error);
+    setLoadingDemand(false);
+  }, [isSupabaseConfigured]);
+
+  useEffect(() => {
+    void loadDemandStats();
+  }, [loadDemandStats]);
 
   useEffect(() => {
     const fetchRepo = async () => {
@@ -259,6 +276,76 @@ export const GitHubIntegrationView: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Anonymous Regional & Topic Demand Stats */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-8 space-y-4 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-display font-bold text-slate-900">
+            <BarChart3 className="w-4 h-4 text-purple-700 shrink-0" />
+            <span>Últimos Assuntos &amp; Regiões Buscadas (Totais Anônimos)</span>
+          </div>
+          {isSupabaseConfigured && (
+            <button
+              type="button"
+              onClick={() => void loadDemandStats()}
+              disabled={loadingDemand}
+              className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 text-xs font-semibold transition-colors"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingDemand ? 'animate-spin' : ''}`} />
+              <span>Atualizar</span>
+            </button>
+          )}
+        </div>
+
+        <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          Registro diário agregado por assunto e Cidade/UF para identificar onde há mais demanda por apoio gratuito — <strong>sem nunca armazenar CEP completo, IP, voz ou histórico individual</strong>.
+        </p>
+
+        {!isSupabaseConfigured ? (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-700 space-y-1.5">
+            <p className="font-semibold text-slate-900">
+              Pronto para conectar ao seu Supabase
+            </p>
+            <p>
+              Execute <code className="font-mono text-purple-900">supabase/migrations/003_search_demand_stats.sql</code> no SQL Editor do Supabase e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel para acompanhar os totais aqui.
+            </p>
+          </div>
+        ) : demandError ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-950">
+            {demandError} Execute o script <code className="font-mono">003_search_demand_stats.sql</code> no SQL Editor do Supabase.
+          </div>
+        ) : demandStats.length === 0 ? (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600">
+            {loadingDemand
+              ? 'Carregando estatísticas agregadas...'
+              : 'Nenhuma busca agregada registrada ainda após a criação da tabela.'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {demandStats.map((row) => (
+              <div
+                key={row.id}
+                className="bg-slate-50 rounded-xl border border-slate-200/90 p-3.5 flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0 space-y-1">
+                  <div className="text-xs font-bold text-slate-900 truncate">
+                    {row.topic_label}
+                  </div>
+                  <div className="text-[11px] text-slate-600 flex items-center gap-1 truncate">
+                    <MapPin className="w-3 h-3 text-blue-700 shrink-0" />
+                    <span>{row.city} - {row.state}</span>
+                    <span className="text-slate-300" aria-hidden="true">·</span>
+                    <span>{row.demand_date}</span>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-purple-100 text-purple-950 text-xs font-bold tabular-nums shrink-0">
+                  {row.search_count}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Complementary Portfolio Vision */}

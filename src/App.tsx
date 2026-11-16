@@ -9,7 +9,7 @@ import { CamouflageView } from './components/CamouflageView';
 import { OfflineAccessModal } from './components/OfflineAccessModal';
 import { CatalogProvider } from './context/CatalogContext';
 import { useOnlineStatus } from './hooks/usePWAInstall';
-import { WifiOff } from 'lucide-react';
+import { WifiOff, Mail, Github, Heart, ExternalLink } from 'lucide-react';
 import { AppSection, CepInfo } from './types';
 
 function AppContent() {
@@ -156,43 +156,119 @@ function AppContent() {
         {activeSection === 'ongs' && <NgoPartnerArea />}
       </main>
 
-      {/* Quiet, Uncluttered Footer */}
-      <footer className="bg-white border-t border-slate-200/90 py-7 text-xs text-slate-600">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span>
-            <strong className="font-display text-sm text-slate-900">
-              Acolhe<span className="text-pink-700">Mulher</span>
-            </strong>
-            <span className="mx-2 text-slate-300" aria-hidden="true">·</span>
-            <span>Gratuito e sem cadastro</span>
-          </span>
+      {/* Footer with Mission, Creator Contact & Quick Links */}
+      <footer className="bg-gradient-to-br from-[#0F172A] via-[#2E1065] to-[#500724] text-slate-200 border-t border-purple-900/60 pt-12 pb-20 sm:pb-10 text-xs">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-10">
+            {/* Brand & Mission */}
+            <div className="md:col-span-6 space-y-3.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <strong className="font-display text-lg text-white tracking-tight">
+                  Acolhe<span className="text-pink-400">Mulher</span>
+                </strong>
+                <span className="text-white/30" aria-hidden="true">·</span>
+                <span className="text-pink-200 font-medium">Gratuito, seguro e sem cadastro</span>
+              </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-6">
-            <button
-              onClick={() => setActiveSection('inicio')}
-              className="py-1.5 hover:text-purple-800 transition-colors whitespace-nowrap"
-            >
-              Início
-            </button>
-            <button
-              onClick={() => setActiveSection('ongs_apoio')}
-              className="py-1.5 hover:text-purple-800 transition-colors whitespace-nowrap"
-            >
-              ONGs que Ajudam
-            </button>
-            <button
-              onClick={() => setIsOfflineModalOpen(true)}
-              className="py-1.5 hover:text-purple-800 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
-            >
-              <WifiOff className="w-3.5 h-3.5 text-pink-700" />
-              <span>Acesso Offline</span>
-            </button>
-            <button
-              onClick={() => setActiveSection('ongs')}
-              className="py-1.5 text-slate-500 hover:text-blue-800 transition-colors whitespace-nowrap"
-            >
-              Área para ONGs & Parceiros
-            </button>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-pink-300 flex items-center gap-1.5">
+                  <Heart className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                  <span>Minha missão com este projeto</span>
+                </p>
+                <p className="text-xs sm:text-sm text-slate-200/95 leading-relaxed max-w-xl">
+                  Usar a tecnologia com humanidade e acolhimento para conectar mulheres em situação de vulnerabilidade, em todo o Brasil, a serviços gratuitos de proteção, saúde, apoio psicológico, orientação jurídica e capacitação profissional — sem exigir cadastro, sem expor dados e com busca imediata por CEP ou voz.
+                </p>
+              </div>
+
+              <p className="text-xs text-slate-300 pt-1">
+                Idealizado e desenvolvido por <strong className="text-white">Karol Castro</strong> · Projeto aberto nascido na Formação <span className="text-pink-300 font-medium">{`{reprograma}`}</span>.
+              </p>
+            </div>
+
+            {/* Creator Contact */}
+            <div className="md:col-span-4 space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-200">
+                Contato & Colaboração
+              </p>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Quer indicar um serviço gratuito, propor parceria com uma ONG ou conversar sobre o projeto? Fale comigo:
+              </p>
+              <div className="space-y-2 pt-0.5">
+                <a
+                  href="mailto:karolinycosta@yahoo.com.br"
+                  className="inline-flex items-center gap-2 text-xs sm:text-sm font-medium text-white hover:text-pink-300 transition-colors break-all"
+                >
+                  <Mail className="w-4 h-4 text-pink-400 shrink-0" />
+                  <span>karolinycosta@yahoo.com.br</span>
+                </a>
+                <div className="flex flex-col gap-1.5">
+                  <a
+                    href="https://github.com/karolcastro"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-xs text-slate-200 hover:text-pink-300 transition-colors"
+                  >
+                    <Github className="w-4 h-4 text-blue-300 shrink-0" />
+                    <span>GitHub: @karolcastro</span>
+                    <ExternalLink className="w-3 h-3 text-slate-400 shrink-0" />
+                  </a>
+                  <a
+                    href="https://github.com/karolcastro/acolheMulher"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-xs text-slate-300 hover:text-pink-300 transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4 text-purple-300 shrink-0" />
+                    <span>Repositório oficial: karolcastro/acolheMulher</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Navigation */}
+            <div className="md:col-span-2 space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-purple-200">
+                Acesso Rápido
+              </p>
+              <nav aria-label="Navegação do rodapé" className="flex flex-col items-start gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveSection('inicio')}
+                  className="py-1 text-slate-200 hover:text-pink-300 transition-colors text-left"
+                >
+                  Início
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSection('ongs_apoio')}
+                  className="py-1 text-slate-200 hover:text-pink-300 transition-colors text-left"
+                >
+                  ONGs que Ajudam
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsOfflineModalOpen(true)}
+                  className="py-1 text-slate-200 hover:text-pink-300 transition-colors inline-flex items-center gap-1.5 text-left"
+                >
+                  <WifiOff className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                  <span>Acesso Offline</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSection('ongs')}
+                  className="py-1 text-slate-300 hover:text-blue-200 transition-colors text-left"
+                >
+                  Área para ONGs & Parceiros
+                </button>
+              </nav>
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-white/15 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-300">
+            <span>© {new Date().getFullYear()} AcolheMulher · Por Karol Castro</span>
+            <span className="text-center sm:text-right text-slate-300">
+              Privacidade total: não exigimos login e não guardamos seu histórico de busca.
+            </span>
           </div>
         </div>
       </footer>
