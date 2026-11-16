@@ -115,11 +115,11 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
         }}
         className={
           isHero
-            ? 'flex items-center bg-white rounded-2xl border border-stone-300 p-1.5 shadow-xs focus-within:ring-2 focus-within:ring-rose-600 focus-within:border-rose-600 transition-all gap-1'
-            : 'flex items-center bg-stone-50 rounded-xl border border-stone-300 p-1 focus-within:ring-2 focus-within:ring-rose-600 focus-within:border-rose-600 transition-all gap-1 w-full max-w-md'
+            ? 'flex items-center bg-white rounded-2xl border border-stone-300/90 p-1.5 shadow-sm focus-within:ring-2 focus-within:ring-rose-700 focus-within:border-rose-700 transition-all gap-1.5'
+            : 'flex items-center bg-stone-50 rounded-xl border border-stone-300 p-1 focus-within:ring-2 focus-within:ring-rose-700 focus-within:border-rose-700 transition-all gap-1 w-full max-w-md'
         }
       >
-        <MapPin className={`${isHero ? 'w-5 h-5 ml-2.5' : 'w-4 h-4 ml-2'} text-stone-500 shrink-0`} />
+        <MapPin className={`${isHero ? 'w-5 h-5 ml-3' : 'w-4 h-4 ml-2'} text-stone-400 shrink-0`} />
         <input
           id={inputId}
           type="text"
@@ -132,7 +132,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
           }
           maxLength={60}
           className={`flex-1 bg-transparent text-stone-900 placeholder-stone-500 focus:outline-none min-w-0 ${
-            isHero ? 'px-2.5 py-2.5 text-sm sm:text-base' : 'px-2 py-2 text-xs sm:text-sm'
+            isHero ? 'px-2 py-2.5 text-sm sm:text-base' : 'px-2 py-2 text-xs sm:text-sm'
           }`}
           aria-label="Digite seu CEP ou cidade, ou use a busca por voz"
         />
@@ -150,10 +150,10 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
               ? 'Parar de ouvir'
               : 'Falar CEP ou cidade'
           }
-          className={`min-h-[44px] min-w-[44px] px-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 ${
+          className={`min-h-[44px] min-w-[44px] px-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-700 ${
             isListening
-              ? 'bg-rose-700 text-white hover:bg-rose-800'
-              : 'bg-stone-100 text-stone-800 hover:bg-stone-200 border border-stone-200'
+              ? 'bg-rose-800 text-white hover:bg-rose-900'
+              : 'bg-stone-100 text-stone-800 hover:bg-stone-200 border border-stone-200/80'
           } ${isHero ? 'text-xs sm:text-sm' : 'text-xs'}`}
         >
           {isListening ? (
@@ -163,7 +163,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
             </>
           ) : (
             <>
-              <Mic className="w-4 h-4 text-rose-700" />
+              <Mic className="w-4 h-4 text-rose-800" />
               <span className={isHero ? 'hidden sm:inline' : 'sr-only'}>Falar</span>
             </>
           )}
@@ -172,10 +172,10 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
         <button
           type="submit"
           disabled={loading}
-          className={`min-h-[44px] rounded-xl font-semibold transition-colors flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 ${
+          className={`min-h-[44px] rounded-xl font-semibold transition-colors flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-700 ${
             isHero
-              ? 'px-4 sm:px-5 bg-rose-700 hover:bg-rose-800 disabled:bg-stone-400 text-white text-sm'
-              : 'px-3.5 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-400 text-white text-xs'
+              ? 'px-5 bg-rose-800 hover:bg-rose-900 disabled:bg-stone-400 text-white text-sm'
+              : 'px-4 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-400 text-white text-xs'
           }`}
         >
           {loading ? (

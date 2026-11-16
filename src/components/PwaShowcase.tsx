@@ -18,20 +18,20 @@ export const PwaShowcase: React.FC<PwaShowcaseProps> = ({ onOpenOfflineModal }) 
   };
 
   return (
-    <div className="space-y-12 max-w-5xl mx-auto">
+    <div className="space-y-10 max-w-6xl mx-auto">
       
       {/* Intro Header */}
-      <section className="bg-white rounded-3xl border border-stone-200 p-8 md:p-10 shadow-sm space-y-4">
-        <div className="flex items-center gap-2 text-rose-700 text-xs font-bold uppercase tracking-wider">
-          <Smartphone className="w-4 h-4" />
-          <span>Arquitetura da Plataforma e Aplicativo</span>
+      <section className="bg-white rounded-3xl border border-stone-200/85 p-8 md:p-10 space-y-4">
+        <div className="flex items-center gap-2 text-rose-800 text-xs font-semibold">
+          <Smartphone className="w-4 h-4 shrink-0" />
+          <span>Aplicativo leve direto no navegador (PWA)</span>
         </div>
 
-        <h1 className="text-3xl md:text-4xl font-serif font-bold text-stone-900 leading-tight">
-          "Plataforma ou App?": Como o PWA entrega os dois juntos
+        <h1 className="text-3xl md:text-4xl font-serif font-bold text-stone-900 leading-tight text-balance">
+          Plataforma ou App? Como o PWA entrega os dois juntos
         </h1>
 
-        <p className="text-base text-stone-600 leading-relaxed max-w-3xl">
+        <p className="text-sm sm:text-base text-stone-600 leading-relaxed max-w-3xl">
           Para atender mulheres em situação de vulnerabilidade sem barreiras, a melhor solução é uma 
           <strong> Progressive Web App (PWA)</strong>. Veja as 4 vantagens práticas que fazem o aplicativo funcionar no celular sem passar pela burocracia das lojas de aplicativos:
         </p>
@@ -91,11 +91,11 @@ export const PwaShowcase: React.FC<PwaShowcaseProps> = ({ onOpenOfflineModal }) 
       </div>
 
       {/* Interactive Mobile Device Simulator */}
-      <section className="bg-stone-900 text-white rounded-3xl p-8 md:p-12 shadow-xl">
-        <div className="max-w-3xl mx-auto flex flex-col md:flex-row items-center gap-10">
+      <section className="bg-stone-900 text-white rounded-3xl p-8 md:p-12">
+        <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-10">
           
           {/* Smartphone Frame Mockup */}
-          <div className="w-[300px] h-[580px] bg-stone-950 rounded-[48px] p-3.5 border-4 border-stone-700 shadow-2xl relative shrink-0">
+          <div className="w-[300px] h-[580px] bg-stone-950 rounded-[48px] p-3.5 border-4 border-stone-700 shadow-xl relative shrink-0">
             {/* Notch / Speaker */}
             <div className="absolute top-6 left-1/2 -translate-x-1/2 w-28 h-4 bg-stone-900 rounded-full z-20 flex items-center justify-center">
               <div className="w-3 h-3 rounded-full bg-stone-800" />
@@ -107,29 +107,29 @@ export const PwaShowcase: React.FC<PwaShowcaseProps> = ({ onOpenOfflineModal }) 
               {/* App Bar */}
               <div className="bg-white pt-8 pb-3 px-4 border-b border-stone-200 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-rose-600 text-white flex items-center justify-center font-bold text-[10px]">
+                  <div className="w-6 h-6 rounded-lg bg-rose-800 text-white flex items-center justify-center font-bold text-[10px]">
                     AM
                   </div>
-                  <span className="font-bold text-stone-900 text-xs">AcolheMulher</span>
+                  <span className="font-serif font-bold text-stone-900 text-xs">AcolheMulher</span>
                 </div>
-                <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[9px] rounded font-semibold">
-                  Sem Login
+                <span className="text-rose-800 text-[10px] font-semibold">
+                  Sem login
                 </span>
               </div>
 
               {/* Scrollable Mini Feed */}
               <div className="p-4 space-y-3 overflow-y-auto">
-                <div className="bg-white p-3 rounded-xl border border-stone-200 shadow-xs space-y-1.5">
-                  <div className="text-[10px] text-rose-700 font-bold uppercase">Busca por CEP</div>
-                  <div className="p-2 bg-stone-100 rounded-lg text-[11px] text-stone-500 font-mono">
+                <div className="bg-white p-3 rounded-xl border border-stone-200 space-y-1.5">
+                  <div className="text-[11px] text-rose-800 font-semibold">Busca por CEP</div>
+                  <div className="p-2 bg-stone-100 rounded-lg text-[11px] text-stone-600 font-mono tabular-nums">
                     CEP: 01001-000
                   </div>
-                  <div className="text-[10px] text-emerald-700 font-medium">
-                    ✓ 8 serviços encontrados no raio
+                  <div className="text-[10px] text-emerald-800 font-medium">
+                    8 serviços encontrados no raio
                   </div>
                 </div>
 
-                <div className="bg-white p-3 rounded-xl border border-stone-200 shadow-xs space-y-1">
+                <div className="bg-white p-3 rounded-xl border border-stone-200 space-y-1.5">
                   <div className="font-bold text-[11px] text-stone-900">Casa da Mulher Brasileira</div>
                   <div className="text-[10px] text-stone-500">Atendimento e abrigo 24h</div>
                   <div className="flex gap-1.5 pt-1">
@@ -138,21 +138,18 @@ export const PwaShowcase: React.FC<PwaShowcaseProps> = ({ onOpenOfflineModal }) 
                   </div>
                 </div>
 
-                <div className="bg-white p-3 rounded-xl border border-stone-200 shadow-xs space-y-1">
+                <div className="bg-white p-3 rounded-xl border border-stone-200 space-y-1">
                   <div className="font-bold text-[11px] text-stone-900">Defensoria Pública (NUDEM)</div>
-                  <div className="text-[10px] text-stone-500">Advogada gratuita sem taxa</div>
-                  <span className="inline-block px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[9px] font-medium">
-                    Porta Aberta
-                  </span>
+                  <div className="text-[10px] text-stone-500">Advogada gratuita · Porta Aberta</div>
                 </div>
               </div>
 
               {/* Bottom Touch Bar */}
               <div className="bg-white p-3 border-t border-stone-200 flex items-center justify-around text-[10px] text-stone-600">
-                <span className="text-rose-700 font-bold">Início</span>
+                <span className="text-rose-800 font-bold">Início</span>
                 <span>Mapa</span>
                 <span>Cursos</span>
-                <span className="text-rose-600 font-bold">Ligue 180</span>
+                <span className="text-rose-800 font-bold">Ligue 180</span>
               </div>
 
             </div>
@@ -189,9 +186,9 @@ export const PwaShowcase: React.FC<PwaShowcaseProps> = ({ onOpenOfflineModal }) 
               <button
                 type="button"
                 onClick={() => void handleInstallClick()}
-                className="px-5 py-3 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-xl transition-all shadow flex items-center gap-2 whitespace-nowrap"
+                className="min-h-[44px] px-5 py-3 bg-rose-700 hover:bg-rose-800 text-white font-semibold text-xs rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-4 h-4 shrink-0" />
                 <span>
                   {isInstalled
                     ? 'App instalado · Ver guia offline'

@@ -73,23 +73,20 @@ export const GitHubIntegrationView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
+    <div className="space-y-8 max-w-6xl mx-auto">
       
       {/* Top Banner / GitHub Identity */}
-      <div className="bg-stone-900 text-white rounded-3xl p-6 md:p-10 shadow-md space-y-6">
+      <div className="bg-stone-900 text-white rounded-3xl p-6 md:p-10 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-stone-800">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-white text-stone-950 flex items-center justify-center shrink-0 shadow-md">
+            <div className="w-14 h-14 rounded-2xl bg-white text-stone-950 flex items-center justify-center shrink-0">
               <Github className="w-8 h-8" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-rose-400 uppercase tracking-wider">
-                  Projeto Aberto no GitHub
-                </span>
-                <span className="px-2 py-0.5 bg-rose-950 text-rose-300 text-[10px] rounded-md border border-rose-800">
-                  Formação {`{reprograma}`}
-                </span>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-rose-300 font-medium">
+                <span>Projeto Aberto no GitHub</span>
+                <span className="text-stone-600" aria-hidden="true">·</span>
+                <span>Formação {`{reprograma}`}</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-serif font-bold text-white mt-0.5">
                 acolheMulher
@@ -219,10 +216,10 @@ export const GitHubIntegrationView: React.FC = () => {
       </div>
 
       {/* Python Clean Architecture + Security + MCP Server (Partners Only) */}
-      <div className="bg-white rounded-2xl border border-stone-200 p-6 md:p-8 shadow-xs space-y-4">
+      <div className="bg-white rounded-2xl border border-stone-200/85 p-6 md:p-8 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-stone-800 uppercase tracking-wider">
-            <Layers className="w-4 h-4 text-rose-700" />
+          <div className="flex items-center gap-2 text-sm font-bold text-stone-900">
+            <Layers className="w-4 h-4 text-rose-800 shrink-0" />
             <span>Backend Python · Clean Architecture + Segurança + MCP</span>
           </div>
           <span className="text-xs font-medium text-emerald-800 inline-flex items-center gap-1.5">
@@ -237,12 +234,12 @@ export const GitHubIntegrationView: React.FC = () => {
           </span>
         </div>
 
-        <p className="text-xs text-stone-600 leading-relaxed">
+        <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
           O backend em Python segue separação estrita em camadas (<strong>Domain</strong>, <strong>Application</strong>, <strong>Infrastructure</strong>, <strong>Presentation</strong>, <strong>Security</strong> e <strong>MCP</strong>), com proteção Zero-PII (sem armazenamento de CEP, voz ou IP), anti-SSRF para ViaCEP, rate limiting com HMAC efêmero, cabeçalhos OWASP e protocolo <strong>Model Context Protocol (JSON-RPC 2.0)</strong> para agentes de IA.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-          <div className="bg-stone-50 rounded-xl border border-stone-200 p-3.5 space-y-1">
+          <div className="bg-stone-50 rounded-xl border border-stone-200/80 p-3.5 space-y-1">
             <div className="font-bold text-stone-900 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
               <span>Servidor MCP (STDIO &amp; HTTP /mcp)</span>
@@ -255,9 +252,9 @@ export const GitHubIntegrationView: React.FC = () => {
             </p>
           </div>
 
-          <div className="bg-stone-50 rounded-xl border border-stone-200 p-3.5 space-y-1">
+          <div className="bg-stone-50 rounded-xl border border-stone-200/80 p-3.5 space-y-1">
             <div className="font-bold text-stone-900 flex items-center gap-1.5">
-              <Code className="w-3.5 h-3.5 text-rose-700" />
+              <Code className="w-3.5 h-3.5 text-rose-800" />
               <span>Comandos de Execução</span>
             </div>
             <div className="font-mono text-[11px] text-stone-700 space-y-0.5">
@@ -269,12 +266,12 @@ export const GitHubIntegrationView: React.FC = () => {
       </div>
 
       {/* Complementary Portfolio Vision */}
-      <div className="bg-white rounded-2xl border border-stone-200 p-6 md:p-8 shadow-xs space-y-3">
-        <div className="flex items-center gap-2 text-xs font-bold text-stone-700 uppercase tracking-wider">
-          <Sparkles className="w-4 h-4 text-rose-600" />
+      <div className="bg-white rounded-2xl border border-stone-200/85 p-6 md:p-8 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-bold text-stone-900">
+          <Sparkles className="w-4 h-4 text-rose-700" />
           <span>Visão de Portfólio Tecnológico</span>
         </div>
-        <p className="text-xs text-stone-600 leading-relaxed">
+        <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
           Esta plataforma foi concebida de forma modular: enquanto o <strong>ProjectFlow AI</strong> demonstra governança com inteligência artificial, regras de negócio e persistência relacional com PostgreSQL/Supabase, o <strong>AcolheMulher</strong> combina frontend moderno em React/TypeScript + PWA offline e backend Python em Clean Architecture com servidor MCP e segurança trauma-informed.
         </p>
       </div>

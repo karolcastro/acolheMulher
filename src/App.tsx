@@ -46,7 +46,7 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF8F6] text-stone-900 flex flex-col font-sans selection:bg-rose-200 selection:text-rose-900">
+    <div className="min-h-screen bg-[#FBF9F8] text-stone-900 flex flex-col font-sans selection:bg-rose-200 selection:text-rose-900">
       {/* Clean Single-Row Top Header */}
       <Header
         activeSection={activeSection}
@@ -57,8 +57,8 @@ function AppContent() {
 
       {/* Automatic Offline Banner */}
       {!isOnline && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs text-amber-950">
-          <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-2">
+        <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 lg:px-8 py-2.5 text-xs text-amber-950">
+          <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 font-medium">
               <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
               <span>Você está sem internet. Os telefones de emergência e serviços salvos continuam funcionando.</span>
@@ -75,7 +75,7 @@ function AppContent() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 w-full px-4 sm:px-6 py-8 md:py-12">
+      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-8 md:py-12">
         {activeSection === 'inicio' && (
           <HomeView
             currentLocation={currentLocation}
@@ -157,35 +157,37 @@ function AppContent() {
       </main>
 
       {/* Quiet, Uncluttered Footer */}
-      <footer className="bg-white border-t border-stone-200/80 py-6 text-xs text-stone-600">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <footer className="bg-white border-t border-stone-200/80 py-7 text-xs text-stone-600">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <span>
-            <strong className="text-stone-900">AcolheMulher</strong> · Gratuito e sem cadastro
+            <strong className="font-serif text-sm text-stone-900">AcolheMulher</strong>
+            <span className="mx-2 text-stone-300" aria-hidden="true">·</span>
+            <span>Gratuito e sem cadastro</span>
           </span>
 
-          <div className="flex flex-wrap items-center justify-center gap-5">
+          <div className="flex flex-wrap items-center justify-center gap-6">
             <button
               onClick={() => setActiveSection('inicio')}
-              className="hover:text-stone-900 transition-colors"
+              className="py-1.5 hover:text-stone-900 transition-colors whitespace-nowrap"
             >
               Início
             </button>
             <button
               onClick={() => setActiveSection('ongs_apoio')}
-              className="hover:text-stone-900 transition-colors"
+              className="py-1.5 hover:text-stone-900 transition-colors whitespace-nowrap"
             >
               ONGs que Ajudam
             </button>
             <button
               onClick={() => setIsOfflineModalOpen(true)}
-              className="hover:text-stone-900 transition-colors inline-flex items-center gap-1"
+              className="py-1.5 hover:text-stone-900 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
             >
-              <WifiOff className="w-3.5 h-3.5 text-rose-700" />
+              <WifiOff className="w-3.5 h-3.5 text-rose-800" />
               <span>Acesso Offline</span>
             </button>
             <button
               onClick={() => setActiveSection('ongs')}
-              className="text-stone-500 hover:text-stone-900 transition-colors"
+              className="py-1.5 text-stone-500 hover:text-stone-900 transition-colors whitespace-nowrap"
             >
               Área para ONGs & Parceiros
             </button>

@@ -7,24 +7,24 @@ export const NgoPartnerArea: React.FC = () => {
   const [partnerTab, setPartnerTab] = useState<'widget' | 'dados_github'>('widget');
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
+    <div className="space-y-8 max-w-6xl mx-auto">
       
       {/* Header for Institutional / NGO Partners */}
-      <div className="bg-white rounded-3xl border border-stone-200 p-6 md:p-8 shadow-xs space-y-4">
+      <div className="bg-white rounded-3xl border border-stone-200/85 p-6 md:p-8 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-rose-700 text-xs font-bold uppercase tracking-wider mb-1">
-              <Building2 className="w-4 h-4" />
-              <span>Espaço Exclusivo para Instituições, Coletivos e ONGs</span>
+            <div className="flex items-center gap-2 text-rose-800 text-xs font-semibold mb-1">
+              <Building2 className="w-4 h-4 shrink-0" />
+              <span>Espaço exclusivo para instituições, coletivos e ONGs</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-stone-900 leading-tight">
+            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-stone-900 leading-tight text-balance">
               Área de Parcerias & Integração Técnica
             </h1>
           </div>
 
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-stone-100 text-stone-700 rounded-xl text-xs font-medium self-start sm:self-center">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Código Aberto · Sem Fins Lucrativos</span>
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 self-start sm:self-center">
+            <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+            <span>Código aberto · Sem fins lucrativos</span>
           </div>
         </div>
 
@@ -34,28 +34,30 @@ export const NgoPartnerArea: React.FC = () => {
         </p>
 
         {/* Clean Sub-navigation for NGOs */}
-        <div className="flex items-center gap-2 pt-2 border-t border-stone-100">
+        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-stone-100">
           <button
+            type="button"
             onClick={() => setPartnerTab('widget')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            className={`min-h-[40px] flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
               partnerTab === 'widget'
-                ? 'bg-rose-700 text-white shadow-xs'
+                ? 'bg-rose-800 text-white'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
             }`}
           >
-            <Globe className="w-3.5 h-3.5" />
+            <Globe className="w-3.5 h-3.5 shrink-0" />
             <span>1. Gerar Widget para o seu Site</span>
           </button>
 
           <button
+            type="button"
             onClick={() => setPartnerTab('dados_github')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            className={`min-h-[40px] flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
               partnerTab === 'dados_github'
-                ? 'bg-rose-700 text-white shadow-xs'
+                ? 'bg-rose-800 text-white'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
             }`}
           >
-            <Database className="w-3.5 h-3.5" />
+            <Database className="w-3.5 h-3.5 shrink-0" />
             <span>2. Dados Abertos & GitHub</span>
           </button>
         </div>
