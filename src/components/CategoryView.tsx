@@ -96,33 +96,33 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
         <button
           type="button"
           onClick={onBackToHome}
-          className="min-h-[40px] inline-flex items-center gap-1.5 text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors"
+          className="min-h-[40px] inline-flex items-center gap-1.5 text-sm font-medium text-purple-900 hover:text-pink-700 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 shrink-0" />
           <span>Voltar para o início</span>
         </button>
 
         <div className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-bold text-stone-900 text-balance leading-tight">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-display font-bold text-slate-900 text-balance leading-tight">
             {title}
           </h1>
-          <p className="text-sm sm:text-base text-stone-600 max-w-3xl leading-relaxed">
+          <p className="text-sm sm:text-base text-slate-600 max-w-3xl leading-relaxed">
             {description}
           </p>
         </div>
 
         {/* Clean Location Filter Bar with Voice Search */}
-        <div className="bg-white rounded-2xl border border-stone-200/85 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
           {currentLocation && !showCepChange ? (
-            <div className="flex flex-wrap items-center gap-2 text-stone-700">
-              <MapPin className="w-4 h-4 text-rose-800 shrink-0" />
+            <div className="flex flex-wrap items-center gap-2 text-slate-700">
+              <MapPin className="w-4 h-4 text-blue-700 shrink-0" />
               <span>
                 Localização: <strong>{currentLocation.localidade} - {currentLocation.uf}</strong>
               </span>
               <button
                 type="button"
                 onClick={() => setShowCepChange(true)}
-                className="text-rose-800 hover:text-rose-950 font-semibold underline underline-offset-2 ml-1 py-1"
+                className="text-pink-700 hover:text-purple-900 font-semibold underline underline-offset-2 ml-1 py-1"
               >
                 Trocar CEP ou falar outro local
               </button>
@@ -149,8 +149,8 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
                 onClick={() => setHealthFilter(tab.id)}
                 className={`min-h-[40px] px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-colors ${
                   healthFilter === tab.id
-                    ? 'bg-stone-900 text-white'
-                    : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-100'
+                    ? 'bg-purple-900 text-white'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:border-pink-300 hover:text-pink-700'
                 }`}
               >
                 {tab.label}
@@ -169,11 +169,11 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
         </div>
 
         {services.length === 0 && (
-          <div className="bg-white rounded-2xl border border-stone-200 p-8 text-center space-y-2">
-            <p className="text-sm font-medium text-stone-800">
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-2">
+            <p className="text-sm font-medium text-slate-800">
               Nenhum serviço específico encontrado para este filtro ou CEP.
             </p>
-            <p className="text-xs text-stone-600">
+            <p className="text-xs text-slate-600">
               Experimente selecionar "Todos" ou ligar gratuitamente para o <strong>136</strong> (Disque Saúde) ou <strong>180</strong>.
             </p>
           </div>
@@ -182,26 +182,26 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
 
       {/* Matching NGOs */}
       {matchingNgos.length > 0 && (
-        <section className="space-y-4 pt-6 border-t border-stone-200/80">
-          <h2 className="text-lg font-serif font-bold text-stone-900">
+        <section className="space-y-4 pt-6 border-t border-slate-200">
+          <h2 className="text-lg font-display font-bold text-slate-900">
             ONGs que também ajudam gratuitamente nessa área
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {matchingNgos.map((ngo) => (
               <div
                 key={ngo.id}
-                className="bg-white rounded-2xl border border-stone-200/85 hover:border-stone-300 p-6 flex flex-col justify-between gap-4 transition-colors"
+                className="bg-white rounded-2xl border border-slate-200/90 hover:border-pink-300 p-6 flex flex-col justify-between gap-4 shadow-xs transition-all"
               >
                 <div className="space-y-1.5">
-                  <div className="text-xs text-rose-800 font-semibold">{ngo.coverage}</div>
-                  <h3 className="text-base font-bold text-stone-900">{ngo.name}</h3>
-                  <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">{ngo.summary}</p>
+                  <div className="text-xs text-pink-700 font-semibold">{ngo.coverage}</div>
+                  <h3 className="text-base font-display font-bold text-slate-900">{ngo.name}</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">{ngo.summary}</p>
                 </div>
                 <a
                   href={ngo.websiteUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="min-h-[44px] inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-4 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-xl transition-colors whitespace-nowrap"
+                  className="min-h-[44px] inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-4 bg-gradient-to-r from-blue-900 to-purple-900 hover:from-pink-600 hover:to-purple-700 text-white text-xs font-semibold rounded-xl transition-all whitespace-nowrap"
                 >
                   <span>Acessar ONG</span>
                   <ExternalLink className="w-3.5 h-3.5 shrink-0" />

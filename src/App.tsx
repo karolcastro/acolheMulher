@@ -46,7 +46,7 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FBF9F8] text-stone-900 flex flex-col font-sans selection:bg-rose-200 selection:text-rose-900">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col font-sans selection:bg-pink-200 selection:text-purple-950">
       {/* Clean Single-Row Top Header */}
       <Header
         activeSection={activeSection}
@@ -57,16 +57,16 @@ function AppContent() {
 
       {/* Automatic Offline Banner */}
       {!isOnline && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 lg:px-8 py-2.5 text-xs text-amber-950">
+        <div className="bg-purple-950 text-white border-b border-purple-800 px-4 sm:px-6 lg:px-8 py-2.5 text-xs">
           <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 font-medium">
-              <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
+              <WifiOff className="w-4 h-4 text-pink-300 shrink-0" />
               <span>Você está sem internet. Os telefones de emergência e serviços salvos continuam funcionando.</span>
             </div>
             <button
               type="button"
               onClick={() => setIsOfflineModalOpen(true)}
-              className="font-semibold underline hover:text-amber-800 whitespace-nowrap"
+              className="font-semibold text-pink-200 underline hover:text-white whitespace-nowrap"
             >
               Ver acesso offline
             </button>
@@ -157,37 +157,39 @@ function AppContent() {
       </main>
 
       {/* Quiet, Uncluttered Footer */}
-      <footer className="bg-white border-t border-stone-200/80 py-7 text-xs text-stone-600">
+      <footer className="bg-white border-t border-slate-200/90 py-7 text-xs text-slate-600">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <span>
-            <strong className="font-serif text-sm text-stone-900">AcolheMulher</strong>
-            <span className="mx-2 text-stone-300" aria-hidden="true">·</span>
+            <strong className="font-display text-sm text-slate-900">
+              Acolhe<span className="text-pink-700">Mulher</span>
+            </strong>
+            <span className="mx-2 text-slate-300" aria-hidden="true">·</span>
             <span>Gratuito e sem cadastro</span>
           </span>
 
           <div className="flex flex-wrap items-center justify-center gap-6">
             <button
               onClick={() => setActiveSection('inicio')}
-              className="py-1.5 hover:text-stone-900 transition-colors whitespace-nowrap"
+              className="py-1.5 hover:text-purple-800 transition-colors whitespace-nowrap"
             >
               Início
             </button>
             <button
               onClick={() => setActiveSection('ongs_apoio')}
-              className="py-1.5 hover:text-stone-900 transition-colors whitespace-nowrap"
+              className="py-1.5 hover:text-purple-800 transition-colors whitespace-nowrap"
             >
               ONGs que Ajudam
             </button>
             <button
               onClick={() => setIsOfflineModalOpen(true)}
-              className="py-1.5 hover:text-stone-900 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
+              className="py-1.5 hover:text-purple-800 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
             >
-              <WifiOff className="w-3.5 h-3.5 text-rose-800" />
+              <WifiOff className="w-3.5 h-3.5 text-pink-700" />
               <span>Acesso Offline</span>
             </button>
             <button
               onClick={() => setActiveSection('ongs')}
-              className="py-1.5 text-stone-500 hover:text-stone-900 transition-colors whitespace-nowrap"
+              className="py-1.5 text-slate-500 hover:text-blue-800 transition-colors whitespace-nowrap"
             >
               Área para ONGs & Parceiros
             </button>

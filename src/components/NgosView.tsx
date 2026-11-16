@@ -30,17 +30,17 @@ export const NgosView: React.FC<NgosViewProps> = ({ onBackToHome }) => {
         <button
           type="button"
           onClick={onBackToHome}
-          className="min-h-[40px] inline-flex items-center gap-1.5 text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors"
+          className="min-h-[40px] inline-flex items-center gap-1.5 text-sm font-medium text-purple-900 hover:text-pink-700 transition-colors"
         >
           <ArrowLeft className="w-4 h-4 shrink-0" />
           <span>Voltar para o início</span>
         </button>
 
         <div className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-bold text-stone-900 text-balance leading-tight">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-display font-bold text-slate-900 text-balance leading-tight">
             ONGs que podem te ajudar gratuitamente
           </h1>
-          <p className="text-sm sm:text-base text-stone-600 max-w-3xl leading-relaxed">
+          <p className="text-sm sm:text-base text-slate-600 max-w-3xl leading-relaxed">
             Projetos solidários feitos por mulheres e voluntárias para oferecer escuta, orientação jurídica, exames e cursos sem custo.
           </p>
         </div>
@@ -54,8 +54,8 @@ export const NgosView: React.FC<NgosViewProps> = ({ onBackToHome }) => {
               onClick={() => setSelectedArea(tab.id)}
               className={`min-h-[40px] px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-colors ${
                 selectedArea === tab.id
-                  ? 'bg-stone-900 text-white'
-                  : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-100'
+                  ? 'bg-purple-900 text-white'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:border-pink-300 hover:text-pink-700'
               }`}
             >
               {tab.label}
@@ -69,41 +69,41 @@ export const NgosView: React.FC<NgosViewProps> = ({ onBackToHome }) => {
         {filteredNgos.map((ngo: NgoItem) => (
           <article
             key={ngo.id}
-            className="bg-white rounded-2xl border border-stone-200/85 hover:border-stone-300 p-6 flex flex-col justify-between gap-5 transition-colors duration-200"
+            className="bg-white rounded-2xl border border-slate-200/90 hover:border-pink-300 p-6 flex flex-col justify-between gap-5 shadow-xs hover:shadow-md transition-all duration-200"
           >
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-stone-600 font-medium">
-                <span className="text-rose-800 font-semibold">{ngo.areaLabel}</span>
-                <span className="text-stone-300" aria-hidden="true">·</span>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 font-medium">
+                <span className="text-pink-700 font-semibold">{ngo.areaLabel}</span>
+                <span className="text-slate-300" aria-hidden="true">·</span>
                 <span>{ngo.coverage}</span>
               </div>
 
               <div>
-                <h2 className="text-lg font-bold text-stone-900 leading-snug">{ngo.name}</h2>
-                <p className="text-xs text-stone-500 mt-0.5">{ngo.organization}</p>
+                <h2 className="text-lg font-display font-bold text-slate-900 leading-snug">{ngo.name}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{ngo.organization}</p>
               </div>
 
-              <p className="text-sm text-stone-600 leading-relaxed">
+              <p className="text-sm text-slate-600 leading-relaxed">
                 {ngo.summary}
               </p>
 
-              <ul className="space-y-1.5 text-xs text-stone-700 pt-1">
+              <ul className="space-y-1.5 text-xs text-slate-700 pt-1">
                 {ngo.howTheyHelp.map((item, idx) => (
                   <li key={idx} className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                    <CheckCircle2 className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
                     <span>{item}</span>
                   </li>
                 ))}
               </ul>
             </div>
 
-            <div className="pt-3 border-t border-stone-100 flex items-center justify-between gap-3">
-              <span className="text-xs text-stone-500 truncate">{ngo.accessChannel}</span>
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+              <span className="text-xs text-slate-500 truncate">{ngo.accessChannel}</span>
               <a
                 href={ngo.websiteUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="min-h-[44px] inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-white bg-rose-800 hover:bg-rose-900 rounded-xl transition-colors whitespace-nowrap shrink-0"
+                className="min-h-[44px] inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-pink-600 to-purple-700 hover:from-pink-700 hover:to-purple-800 rounded-xl transition-all whitespace-nowrap shrink-0 shadow-xs"
               >
                 <span>Acessar ONG</span>
                 <ExternalLink className="w-3.5 h-3.5 shrink-0" />

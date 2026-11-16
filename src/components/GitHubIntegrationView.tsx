@@ -5,7 +5,6 @@ import { Github, ExternalLink, Download, GitPullRequest, Code, Check, Sparkles, 
 export const GitHubIntegrationView: React.FC = () => {
   const { nationalServices, regionalServices, ngos, isLiveConnected, isSupabaseConfigured } = useCatalog();
   const [repoData, setRepoData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [copiedTemplate, setCopiedTemplate] = useState(false);
 
   useEffect(() => {
@@ -18,8 +17,6 @@ export const GitHubIntegrationView: React.FC = () => {
         }
       } catch (err) {
         console.error('Erro ao conectar ao GitHub:', err);
-      } finally {
-        setLoading(false);
       }
     };
     fetchRepo();
@@ -27,10 +24,10 @@ export const GitHubIntegrationView: React.FC = () => {
 
   const handleDownloadJSON = () => {
     const fullDatabase = {
-      projeto: "AcolheMulher",
-      autora: "Karol Castro",
-      repositorio: "https://github.com/karolcastro/acolheMulher",
-      versao: "1.0.0",
+      projeto: 'AcolheMulher',
+      autora: 'Karol Castro',
+      repositorio: 'https://github.com/karolcastro/acolheMulher',
+      versao: '1.0.0',
       data_exportacao: new Date().toISOString(),
       total_servicos: nationalServices.length + regionalServices.length,
       total_ongs: ngos.length,
@@ -74,24 +71,24 @@ export const GitHubIntegrationView: React.FC = () => {
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
-      
+
       {/* Top Banner / GitHub Identity */}
-      <div className="bg-stone-900 text-white rounded-3xl p-6 md:p-10 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-stone-800">
+      <div className="bg-gradient-to-br from-[#0F172A] via-[#2E1065] to-[#500724] text-white rounded-3xl p-6 md:p-10 space-y-6 shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-white/15">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-white text-stone-950 flex items-center justify-center shrink-0">
+            <div className="w-14 h-14 rounded-2xl bg-white text-slate-950 flex items-center justify-center shrink-0">
               <Github className="w-8 h-8" />
             </div>
             <div>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-rose-300 font-medium">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-pink-300 font-medium">
                 <span>Projeto Aberto no GitHub</span>
-                <span className="text-stone-600" aria-hidden="true">·</span>
+                <span className="text-white/30" aria-hidden="true">·</span>
                 <span>Formação {`{reprograma}`}</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-serif font-bold text-white mt-0.5">
+              <h1 className="text-2xl sm:text-3xl font-display font-bold text-white mt-0.5">
                 acolheMulher
               </h1>
-              <div className="text-xs text-stone-400 font-mono mt-1">
+              <div className="text-xs text-slate-300 font-mono mt-1">
                 github.com/karolcastro/acolheMulher
               </div>
             </div>
@@ -102,23 +99,24 @@ export const GitHubIntegrationView: React.FC = () => {
               href="https://github.com/karolcastro/acolheMulher"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm"
+              className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-semibold transition-all shadow-sm whitespace-nowrap"
             >
-              <Github className="w-4 h-4" />
+              <Github className="w-4 h-4 shrink-0" />
               <span>Ver Repositório Oficial</span>
-              <ExternalLink className="w-3.5 h-3.5" />
+              <ExternalLink className="w-3.5 h-3.5 shrink-0" />
             </a>
           </div>
         </div>
 
         {/* Live Repository Status */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-          <div className="bg-stone-800/80 p-4 rounded-2xl border border-stone-700/80 space-y-1">
-            <span className="text-stone-400 text-[11px] block">Autora & Desenvolvedora</span>
+          <div className="bg-white/10 p-4 rounded-2xl border border-white/15 space-y-1 backdrop-blur-sm">
+            <span className="text-slate-300 text-[11px] block">Autora & Desenvolvedora</span>
             <div className="font-bold text-white text-sm flex items-center gap-2">
               <img
-                src={repoData?.owner?.avatar_url || "https://avatars.githubusercontent.com/u/49079797?v=4"}
+                src={repoData?.owner?.avatar_url || 'https://avatars.githubusercontent.com/u/49079797?v=4'}
                 alt="Karol Castro"
+                referrerPolicy="no-referrer"
                 className="w-5 h-5 rounded-full"
               />
               <span>Karol Castro</span>
@@ -127,77 +125,76 @@ export const GitHubIntegrationView: React.FC = () => {
               href="https://github.com/karolcastro"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-rose-300 hover:underline text-[11px] block"
+              className="text-pink-300 hover:underline text-[11px] block"
             >
               @karolcastro no GitHub
             </a>
           </div>
 
-          <div className="bg-stone-800/80 p-4 rounded-2xl border border-stone-700/80 space-y-1">
-            <span className="text-stone-400 text-[11px] block">Licença & Modelo de Acesso</span>
-            <div className="font-bold text-emerald-400 text-sm">Código Aberto (Open Source)</div>
-            <span className="text-stone-300 text-[11px] block">Livre de fins lucrativos · Acesso por CEP</span>
+          <div className="bg-white/10 p-4 rounded-2xl border border-white/15 space-y-1 backdrop-blur-sm">
+            <span className="text-slate-300 text-[11px] block">Licença & Modelo de Acesso</span>
+            <div className="font-bold text-pink-300 text-sm">Código Aberto (Open Source)</div>
+            <span className="text-slate-200 text-[11px] block">Livre de fins lucrativos · Acesso por CEP</span>
           </div>
 
-          <div className="bg-stone-800/80 p-4 rounded-2xl border border-stone-700/80 space-y-1">
-            <span className="text-stone-400 text-[11px] block">Arquitetura Integrada</span>
-            <div className="font-bold text-indigo-300 text-sm">React 19 + TypeScript + PWA</div>
-            <span className="text-stone-300 text-[11px] block">Widget iFrame + API ViaCEP</span>
+          <div className="bg-white/10 p-4 rounded-2xl border border-white/15 space-y-1 backdrop-blur-sm">
+            <span className="text-slate-300 text-[11px] block">Arquitetura Integrada</span>
+            <div className="font-bold text-blue-300 text-sm">React 19 + TypeScript + PWA</div>
+            <span className="text-slate-200 text-[11px] block">Widget iFrame + API ViaCEP</span>
           </div>
         </div>
       </div>
 
       {/* Open Data & Community Contribution */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        {/* Card 1: Export Open Data */}
-        <div className="bg-white rounded-2xl border border-stone-200 p-6 md:p-8 space-y-4 shadow-xs flex flex-col justify-between">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 space-y-4 shadow-xs flex flex-col justify-between">
           <div className="space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-xl bg-pink-50 text-pink-700 flex items-center justify-center font-bold">
               <Download className="w-5 h-5" />
             </div>
-            <h2 className="text-lg font-bold text-stone-900">
+            <h2 className="text-lg font-display font-bold text-slate-900">
               Download da Base Aberta (JSON)
             </h2>
-            <p className="text-xs text-stone-600 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               Disponibilizamos todos os dados públicos e verificados de postos de saúde, DEAMs, Defensorias e cursos gratuitos para que outras pesquisadoras e desenvolvedoras possam utilizar livremente.
             </p>
           </div>
 
-          <div className="pt-4 border-t border-stone-100 flex items-center justify-between gap-2">
-            <span className="text-xs text-stone-500 font-mono">
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+            <span className="text-xs text-slate-500 font-mono">
               {nationalServices.length + regionalServices.length} serviços · {ngos.length} ONGs
             </span>
             <button
+              type="button"
               onClick={handleDownloadJSON}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-stone-900 hover:bg-stone-800 text-white rounded-xl transition-colors"
+              className="min-h-[40px] inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-blue-900 hover:bg-blue-950 text-white rounded-xl transition-colors whitespace-nowrap"
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-3.5 h-3.5 shrink-0" />
               <span>Baixar Dados (.json)</span>
             </button>
           </div>
         </div>
 
-        {/* Card 2: Contribute via GitHub Issue */}
-        <div className="bg-white rounded-2xl border border-stone-200 p-6 md:p-8 space-y-4 shadow-xs flex flex-col justify-between">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 space-y-4 shadow-xs flex flex-col justify-between">
           <div className="space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
               <GitPullRequest className="w-5 h-5" />
             </div>
-            <h2 className="text-lg font-bold text-stone-900">
+            <h2 className="text-lg font-display font-bold text-slate-900">
               Sugerir Novo Serviço no GitHub
             </h2>
-            <p className="text-xs text-stone-600 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               Trabalha em um CRAS, faculdade ou ONG e quer cadastrar um serviço gratuito do seu bairro? Copie o modelo padronizado e abra uma Issue no repositório.
             </p>
           </div>
 
-          <div className="pt-4 border-t border-stone-100 flex items-center justify-between gap-3">
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
             <button
+              type="button"
               onClick={handleCopyTemplate}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors"
+              className="min-h-[40px] inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-purple-900 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors"
             >
-              {copiedTemplate ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Code className="w-3.5 h-3.5" />}
+              {copiedTemplate ? <Check className="w-3.5 h-3.5 text-blue-700" /> : <Code className="w-3.5 h-3.5" />}
               <span>{copiedTemplate ? 'Modelo Copiado!' : 'Copiar Modelo'}</span>
             </button>
 
@@ -205,24 +202,23 @@ export const GitHubIntegrationView: React.FC = () => {
               href="https://github.com/karolcastro/acolheMulher/issues"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-4 py-2 text-xs font-semibold bg-rose-700 hover:bg-rose-800 text-white rounded-xl transition-colors"
+              className="min-h-[40px] inline-flex items-center gap-1 px-4 py-2 text-xs font-semibold bg-gradient-to-r from-pink-600 to-purple-700 hover:from-pink-700 hover:to-purple-800 text-white rounded-xl transition-all whitespace-nowrap"
             >
               <span>Abrir no GitHub</span>
-              <ExternalLink className="w-3.5 h-3.5" />
+              <ExternalLink className="w-3.5 h-3.5 shrink-0" />
             </a>
           </div>
         </div>
-
       </div>
 
-      {/* Python Clean Architecture + Security + MCP Server (Partners Only) */}
-      <div className="bg-white rounded-2xl border border-stone-200/85 p-6 md:p-8 space-y-4">
+      {/* Python Clean Architecture + Security + MCP Server */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-8 space-y-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-bold text-stone-900">
-            <Layers className="w-4 h-4 text-rose-800 shrink-0" />
+          <div className="flex items-center gap-2 text-sm font-display font-bold text-slate-900">
+            <Layers className="w-4 h-4 text-pink-700 shrink-0" />
             <span>Backend Python · Clean Architecture + Segurança + MCP</span>
           </div>
-          <span className="text-xs font-medium text-emerald-800 inline-flex items-center gap-1.5">
+          <span className="text-xs font-medium text-blue-800 inline-flex items-center gap-1.5">
             <Database className="w-3.5 h-3.5" />
             <span>
               {isLiveConnected
@@ -234,30 +230,30 @@ export const GitHubIntegrationView: React.FC = () => {
           </span>
         </div>
 
-        <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
-          O backend em Python segue separação estrita em camadas (<strong>Domain</strong>, <strong>Application</strong>, <strong>Infrastructure</strong>, <strong>Presentation</strong>, <strong>Security</strong> e <strong>MCP</strong>), com proteção Zero-PII (sem armazenamento de CEP, voz ou IP), anti-SSRF para ViaCEP, rate limiting com HMAC efêmero, cabeçalhos OWASP e protocolo <strong>Model Context Protocol (JSON-RPC 2.0)</strong> para agentes de IA.
+        <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          O backend em Python segue separação estrita em camadas (<strong>Domain</strong>, <strong>Application</strong>, <strong>Infrastructure</strong>, <strong>Presentation</strong>, <strong>Security</strong> e <strong>MCP</strong>), com proteção Zero-PII (sem armazenamento de CEP, voz ou IP), anti-SSRF para ViaCEP, rate limiting com HMAC efêmero, cabeçalhos OWASP e protocolo <strong>Model Context Protocol (JSON-RPC 2.0)</strong> para agentes.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-          <div className="bg-stone-50 rounded-xl border border-stone-200/80 p-3.5 space-y-1">
-            <div className="font-bold text-stone-900 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+          <div className="bg-slate-50 rounded-xl border border-slate-200 p-3.5 space-y-1">
+            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-700" />
               <span>Servidor MCP (STDIO &amp; HTTP /mcp)</span>
             </div>
-            <p className="text-stone-600">
-              Tools: <code className="font-mono text-stone-800">buscar_servicos_por_cep</code>,{' '}
-              <code className="font-mono text-stone-800">interpretar_busca_por_voz</code>,{' '}
-              <code className="font-mono text-stone-800">listar_ongs_apoio</code>,{' '}
-              <code className="font-mono text-stone-800">obter_emergencia_offline</code>
+            <p className="text-slate-600">
+              Tools: <code className="font-mono text-purple-900">buscar_servicos_por_cep</code>,{' '}
+              <code className="font-mono text-purple-900">interpretar_busca_por_voz</code>,{' '}
+              <code className="font-mono text-purple-900">listar_ongs_apoio</code>,{' '}
+              <code className="font-mono text-purple-900">obter_emergencia_offline</code>
             </p>
           </div>
 
-          <div className="bg-stone-50 rounded-xl border border-stone-200/80 p-3.5 space-y-1">
-            <div className="font-bold text-stone-900 flex items-center gap-1.5">
-              <Code className="w-3.5 h-3.5 text-rose-800" />
+          <div className="bg-slate-50 rounded-xl border border-slate-200 p-3.5 space-y-1">
+            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+              <Code className="w-3.5 h-3.5 text-pink-700" />
               <span>Comandos de Execução</span>
             </div>
-            <div className="font-mono text-[11px] text-stone-700 space-y-0.5">
+            <div className="font-mono text-[11px] text-slate-700 space-y-0.5">
               <div>python3 -m backend.main</div>
               <div>python3 -m backend.mcp.server</div>
             </div>
@@ -266,12 +262,12 @@ export const GitHubIntegrationView: React.FC = () => {
       </div>
 
       {/* Complementary Portfolio Vision */}
-      <div className="bg-white rounded-2xl border border-stone-200/85 p-6 md:p-8 space-y-3">
-        <div className="flex items-center gap-2 text-sm font-bold text-stone-900">
-          <Sparkles className="w-4 h-4 text-rose-700" />
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-8 space-y-3 shadow-xs">
+        <div className="flex items-center gap-2 text-sm font-display font-bold text-slate-900">
+          <Sparkles className="w-4 h-4 text-purple-700" />
           <span>Visão de Portfólio Tecnológico</span>
         </div>
-        <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+        <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
           Esta plataforma foi concebida de forma modular: enquanto o <strong>ProjectFlow AI</strong> demonstra governança com inteligência artificial, regras de negócio e persistência relacional com PostgreSQL/Supabase, o <strong>AcolheMulher</strong> combina frontend moderno em React/TypeScript + PWA offline e backend Python em Clean Architecture com servidor MCP e segurança trauma-informed.
         </p>
       </div>

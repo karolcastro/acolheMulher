@@ -4,11 +4,18 @@ import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { formatCep, resolveLocationQuery } from '../utils/voiceSearchParser';
 import { Search, MapPin, Mic, Square, RefreshCw, AlertCircle } from 'lucide-react';
 
+export interface SearchResolvedPayload {
+  cepInfo?: CepInfo;
+  suggestedSection?: AppSection;
+  rawQuery: string;
+}
+
 interface CepVoiceSearchBarProps {
   variant?: 'hero' | 'compact';
   inputId?: string;
   onLocationResolved: (cepInfo: CepInfo) => void;
   onSectionSuggested?: (section: AppSection) => void;
+  onSearchResult?: (payload: SearchResolvedPayload) => void;
   onCancel?: () => void;
 }
 
@@ -17,6 +24,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
   inputId = 'cepVoiceInput',
   onLocationResolved,
   onSectionSuggested,
+  onSearchResult,
   onCancel,
 }) => {
   const [queryInput, setQueryInput] = useState('');
@@ -41,19 +49,25 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
       setQueryInput(result.formattedInput);
     }
 
-    if (result.cepInfo) {
-      onLocationResolved(result.cepInfo);
+    if (result.cepInfo || result.suggestedSection) {
+      if (result.cepInfo) {
+        onLocationResolved(result.cepInfo);
+      }
       setQueryInput('');
       setLastSpokenText(null);
+
+      if (onSearchResult) {
+        onSearchResult({
+          cepInfo: result.cepInfo,
+          suggestedSection: result.suggestedSection,
+          rawQuery: trimmed,
+        });
+        return;
+      }
+
       if (result.suggestedSection && onSectionSuggested) {
         onSectionSuggested(result.suggestedSection);
       }
-      return;
-    }
-
-    if (result.suggestedSection && onSectionSuggested) {
-      setLastSpokenText(null);
-      onSectionSuggested(result.suggestedSection);
       return;
     }
 
@@ -115,11 +129,11 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
         }}
         className={
           isHero
-            ? 'flex items-center bg-white rounded-2xl border border-stone-300/90 p-1.5 shadow-sm focus-within:ring-2 focus-within:ring-rose-700 focus-within:border-rose-700 transition-all gap-1.5'
-            : 'flex items-center bg-stone-50 rounded-xl border border-stone-300 p-1 focus-within:ring-2 focus-within:ring-rose-700 focus-within:border-rose-700 transition-all gap-1 w-full max-w-md'
+            ? 'flex items-center bg-white rounded-2xl border border-slate-200 p-1.5 shadow-sm focus-within:ring-2 focus-within:ring-pink-600 focus-within:border-pink-600 transition-all gap-1.5'
+            : 'flex items-center bg-slate-50 rounded-xl border border-slate-300 p-1 focus-within:ring-2 focus-within:ring-purple-600 focus-within:border-purple-600 transition-all gap-1 w-full max-w-md'
         }
       >
-        <MapPin className={`${isHero ? 'w-5 h-5 ml-3' : 'w-4 h-4 ml-2'} text-stone-400 shrink-0`} />
+        <MapPin className={`${isHero ? 'w-5 h-5 ml-3' : 'w-4 h-4 ml-2'} text-blue-700 shrink-0`} />
         <input
           id={inputId}
           type="text"
@@ -131,7 +145,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
               : 'CEP ou cidade (ex: 01001-000)'
           }
           maxLength={60}
-          className={`flex-1 bg-transparent text-stone-900 placeholder-stone-500 focus:outline-none min-w-0 ${
+          className={`flex-1 bg-transparent text-slate-900 placeholder-slate-500 focus:outline-none min-w-0 ${
             isHero ? 'px-2 py-2.5 text-sm sm:text-base' : 'px-2 py-2 text-xs sm:text-sm'
           }`}
           aria-label="Digite seu CEP ou cidade, ou use a busca por voz"
@@ -150,10 +164,10 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
               ? 'Parar de ouvir'
               : 'Falar CEP ou cidade'
           }
-          className={`min-h-[44px] min-w-[44px] px-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-700 ${
+          className={`min-h-[44px] min-w-[44px] px-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 ${
             isListening
-              ? 'bg-rose-800 text-white hover:bg-rose-900'
-              : 'bg-stone-100 text-stone-800 hover:bg-stone-200 border border-stone-200/80'
+              ? 'bg-red-600 text-white hover:bg-red-700'
+              : 'bg-purple-50 text-purple-900 hover:bg-purple-100 border border-purple-200/80'
           } ${isHero ? 'text-xs sm:text-sm' : 'text-xs'}`}
         >
           {isListening ? (
@@ -163,7 +177,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
             </>
           ) : (
             <>
-              <Mic className="w-4 h-4 text-rose-800" />
+              <Mic className="w-4 h-4 text-purple-700" />
               <span className={isHero ? 'hidden sm:inline' : 'sr-only'}>Falar</span>
             </>
           )}
@@ -172,10 +186,10 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
         <button
           type="submit"
           disabled={loading}
-          className={`min-h-[44px] rounded-xl font-semibold transition-colors flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-700 ${
+          className={`min-h-[44px] rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-600 ${
             isHero
-              ? 'px-5 bg-rose-800 hover:bg-rose-900 disabled:bg-stone-400 text-white text-sm'
-              : 'px-4 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-400 text-white text-xs'
+              ? 'px-5 bg-gradient-to-r from-pink-600 to-purple-700 hover:from-pink-700 hover:to-purple-800 disabled:from-slate-400 disabled:to-slate-400 text-white text-sm shadow-sm'
+              : 'px-4 bg-blue-800 hover:bg-blue-900 disabled:bg-slate-400 text-white text-xs'
           }`}
         >
           {loading ? (
@@ -193,7 +207,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
               if (isListening) stopListening();
               onCancel();
             }}
-            className="min-h-[44px] px-2.5 text-xs font-medium text-stone-600 hover:text-stone-900 shrink-0 whitespace-nowrap"
+            className="min-h-[44px] px-2.5 text-xs font-medium text-slate-600 hover:text-slate-900 shrink-0 whitespace-nowrap"
           >
             Cancelar
           </button>
@@ -203,8 +217,8 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
       {/* Live voice feedback & accessibility announcements */}
       <div aria-live="polite" className="min-h-[1rem]">
         {isListening && (
-          <p className="text-xs text-rose-800 font-medium flex items-center justify-center sm:justify-start gap-1.5">
-            <Mic className="w-3.5 h-3.5 text-rose-700 shrink-0" />
+          <p className="text-xs text-purple-900 font-medium flex items-center justify-center sm:justify-start gap-1.5">
+            <Mic className="w-3.5 h-3.5 text-pink-700 shrink-0" />
             <span>
               {interimTranscript
                 ? `Ouvindo: "${interimTranscript}"`
@@ -214,13 +228,13 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
         )}
 
         {!isListening && loading && lastSpokenText && (
-          <p className="text-xs text-stone-600">
+          <p className="text-xs text-slate-600">
             Buscando por "{lastSpokenText}"...
           </p>
         )}
 
         {!isListening && activeError && (
-          <p className="text-xs text-rose-700 flex items-center justify-center sm:justify-start gap-1.5">
+          <p className="text-xs text-red-700 flex items-center justify-center sm:justify-start gap-1.5">
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
             <span>{activeError}</span>
           </p>
