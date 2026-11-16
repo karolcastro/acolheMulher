@@ -79,6 +79,8 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
   const {
     isSupported,
     isListening,
+    isProcessingVoice,
+    speechMode,
     interimTranscript,
     speechError,
     startListening,
@@ -119,6 +121,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
 
   const activeError = speechError || errorMessage;
   const isHero = variant === 'hero';
+  const busy = loading || isProcessingVoice;
 
   return (
     <div className="space-y-2 w-full">
@@ -154,12 +157,12 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
         <button
           type="button"
           onClick={handleVoiceToggle}
-          disabled={loading}
+          disabled={busy}
           aria-label={isListening ? 'Parar busca por voz' : 'Buscar CEP ou local por voz'}
           aria-pressed={isListening}
           title={
             !isSupported
-              ? 'Busca por voz indisponível neste navegador'
+              ? 'Microfone indisponível neste navegador'
               : isListening
               ? 'Parar de ouvir'
               : 'Falar CEP ou cidade'
@@ -170,7 +173,12 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
               : 'bg-purple-50 text-purple-900 hover:bg-purple-100 border border-purple-200/80'
           } ${isHero ? 'text-xs sm:text-sm' : 'text-xs'}`}
         >
-          {isListening ? (
+          {isProcessingVoice ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin text-purple-700" />
+              <span className={isHero ? 'hidden sm:inline' : 'sr-only'}>Ouvindo</span>
+            </>
+          ) : isListening ? (
             <>
               <Square className="w-3.5 h-3.5 fill-current" />
               <span>Parar</span>
@@ -185,7 +193,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={busy}
           className={`min-h-[44px] rounded-xl font-semibold transition-all flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-600 ${
             isHero
               ? 'px-5 bg-gradient-to-r from-pink-600 to-purple-700 hover:from-pink-700 hover:to-purple-800 disabled:from-slate-400 disabled:to-slate-400 text-white text-sm shadow-sm'
@@ -222,18 +230,27 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
             <span>
               {interimTranscript
                 ? `Ouvindo: "${interimTranscript}"`
+                : speechMode === 'recorder'
+                ? 'Gravando... fale seu CEP ou cidade e toque em "Parar"'
                 : 'Ouvindo... fale seu CEP, sua cidade ou "emergência"'}
             </span>
           </p>
         )}
 
-        {!isListening && loading && lastSpokenText && (
+        {!isListening && isProcessingVoice && (
+          <p className="text-xs text-purple-900 font-medium flex items-center justify-center sm:justify-start gap-1.5">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin text-pink-700 shrink-0" />
+            <span>Entendendo o que você falou...</span>
+          </p>
+        )}
+
+        {!isListening && !isProcessingVoice && loading && lastSpokenText && (
           <p className="text-xs text-slate-600">
             Buscando por "{lastSpokenText}"...
           </p>
         )}
 
-        {!isListening && activeError && (
+        {!isListening && !isProcessingVoice && activeError && (
           <p className="text-xs text-red-700 flex items-center justify-center sm:justify-start gap-1.5">
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
             <span>{activeError}</span>

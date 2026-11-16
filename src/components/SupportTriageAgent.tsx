@@ -14,6 +14,7 @@ import {
   ExternalLink,
   ArrowRight,
   RotateCcw,
+  RefreshCw,
   ShieldAlert,
   HeartHandshake,
   Scale,
@@ -175,9 +176,13 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
 
   const {
     isListening,
+    isProcessingVoice,
+    speechMode,
     interimTranscript,
+    speechError,
     startListening,
     stopListening,
+    clearSpeechError,
   } = useSpeechRecognition({
     lang: 'pt-BR',
     onFinalTranscript: (transcript) => {
@@ -315,10 +320,15 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
               onChange={(e) => {
                 setNeedInput(e.target.value);
                 setUnclearNotice(null);
+                clearSpeechError();
               }}
               placeholder={
-                isListening
-                  ? 'Ouvindo o que você precisa...'
+                isProcessingVoice
+                  ? 'Entendendo o que você falou...'
+                  : isListening
+                  ? speechMode === 'recorder'
+                    ? 'Gravando... fale e toque no botão vermelho para parar'
+                    : 'Ouvindo o que você precisa...'
                   : 'Ex: preciso de psicóloga, medida protetiva, exame grátis...'
               }
               maxLength={80}
@@ -328,6 +338,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
 
             <button
               type="button"
+              disabled={isProcessingVoice}
               onClick={() => (isListening ? stopListening() : startListening())}
               aria-label={isListening ? 'Parar gravação' : 'Falar o que você procura'}
               className={`min-h-[38px] min-w-[38px] px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shrink-0 ${
@@ -336,11 +347,18 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                   : 'bg-white text-purple-800 hover:bg-purple-100 border border-purple-200'
               }`}
             >
-              {isListening ? <Square className="w-3 h-3 fill-current" /> : <Mic className="w-3.5 h-3.5" />}
+              {isProcessingVoice ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : isListening ? (
+                <Square className="w-3 h-3 fill-current" />
+              ) : (
+                <Mic className="w-3.5 h-3.5" />
+              )}
             </button>
 
             <button
               type="submit"
+              disabled={isProcessingVoice}
               className="min-h-[38px] px-3.5 rounded-lg bg-gradient-to-r from-pink-600 to-purple-700 hover:from-pink-700 hover:to-purple-800 text-white text-xs font-semibold flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-all"
             >
               <Send className="w-3.5 h-3.5" />
@@ -354,9 +372,15 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
             </p>
           )}
 
-          {unclearNotice && (
+          {!isListening && isProcessingVoice && (
+            <p className="text-[11px] text-purple-900 font-medium">
+              Transcrevendo o que você falou...
+            </p>
+          )}
+
+          {(unclearNotice || speechError) && (
             <p className="text-xs text-red-700 font-medium leading-snug">
-              {unclearNotice}
+              {unclearNotice || speechError}
             </p>
           )}
 
