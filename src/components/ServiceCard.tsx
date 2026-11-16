@@ -4,9 +4,10 @@ import { Phone, MapPin, Clock, MessageCircle, ExternalLink, Info } from 'lucide-
 
 interface ServiceCardProps {
   service: ServiceItem;
+  distanceLabel?: string | null;
 }
 
-export const ServiceCard: React.FC<ServiceCardProps> = ({ service }) => {
+export const ServiceCard: React.FC<ServiceCardProps> = ({ service, distanceLabel }) => {
   const [showTips, setShowTips] = useState(false);
 
   const mapQuery = service.address
@@ -23,6 +24,12 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({ service }) => {
           <span>{service.accessMode}</span>
           <span className="text-slate-300" aria-hidden="true">·</span>
           <span className="text-blue-800 font-semibold">Gratuito</span>
+          {distanceLabel && (
+            <>
+              <span className="text-slate-300" aria-hidden="true">·</span>
+              <span className="text-purple-800 font-semibold">{distanceLabel}</span>
+            </>
+          )}
         </div>
 
         {/* Title */}

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AppSection, CepInfo, ServiceItem } from '../types';
+import { AppSection, CepInfo } from '../types';
 import { useCatalog } from '../context/CatalogContext';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { detectSectionIntent, normalizeText } from '../utils/voiceSearchParser';
+import { RankedServiceItem, sortServicesByCepProximity } from '../utils/cepProximity';
 import {
   Sparkles,
   Send,
@@ -100,7 +101,12 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
   const { nationalServices, regionalServices, ngos } = useCatalog();
   const [needInput, setNeedInput] = useState('');
   const [unclearNotice, setUnclearNotice] = useState<string | null>(null);
+  const [showAllNearby, setShowAllNearby] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setShowAllNearby(false);
+  }, [currentLocation, selectedNeed]);
 
   useEffect(() => {
     if (currentLocation && !selectedNeed) {
@@ -119,16 +125,24 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     }
 
     setUnclearNotice(null);
+    const norm = normalizeText(trimmed);
+    if (/\b(tudo|todos|todas|perto|proxim\w*|geral)\b/.test(norm)) {
+      setNeedInput('');
+      setShowAllNearby(true);
+      onUpdateNeed(null, trimmed);
+      return;
+    }
+
     const detected = detectSectionIntent(trimmed);
 
     if (detected && detected in SECTION_META) {
       setNeedInput('');
+      setShowAllNearby(false);
       onUpdateNeed(detected, trimmed);
       return;
     }
 
     // Fallback keyword match against existing services/NGOs
-    const norm = normalizeText(trimmed);
     const allServices = [...regionalServices, ...nationalServices];
     const matchedService = allServices.find((s) =>
       normalizeText(`${s.name} ${s.subcategory} ${s.description} ${(s.tags || []).join(' ')}`).includes(norm)
@@ -178,37 +192,45 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       : null;
 
   const matchedPreview = useMemo(() => {
-    if (!activeCategoryKey) return { services: [] as ServiceItem[], ngoItems: ngos.slice(0, 3), totalCount: 0 };
+    if (showAllNearby && !activeCategoryKey) {
+      const rankedAll = sortServicesByCepProximity(
+        [...regionalServices, ...nationalServices],
+        currentLocation
+      );
+      return {
+        rankedServices: rankedAll.slice(0, 12),
+        ngoItems: [],
+        totalCount: rankedAll.length,
+      };
+    }
+
+    if (!activeCategoryKey) {
+      return { rankedServices: [] as RankedServiceItem[], ngoItems: ngos.slice(0, 4), totalCount: 0 };
+    }
 
     if (activeCategoryKey === 'ongs_apoio') {
       return {
-        services: [],
-        ngoItems: ngos.slice(0, 3),
+        rankedServices: [] as RankedServiceItem[],
+        ngoItems: ngos.slice(0, 5),
         totalCount: ngos.length,
       };
     }
 
-    const matchingRegional = currentLocation
-      ? regionalServices.filter((s) => {
-          if (s.category !== activeCategoryKey) return false;
-          const matchesUF = s.state?.toUpperCase() === currentLocation.uf.toUpperCase();
-          const matchesCity =
-            s.city && currentLocation.localidade
-              ? s.city.toLowerCase().includes(currentLocation.localidade.toLowerCase())
-              : false;
-          return matchesUF || matchesCity;
-        })
-      : regionalServices.filter((s) => s.category === activeCategoryKey);
+    const combined = [
+      ...regionalServices.filter((s) => s.category === activeCategoryKey),
+      ...nationalServices.filter((s) => s.category === activeCategoryKey),
+    ];
 
-    const matchingNational = nationalServices.filter((s) => s.category === activeCategoryKey);
-    const combined = [...matchingRegional, ...matchingNational];
+    const ranked = sortServicesByCepProximity(combined, currentLocation);
 
     return {
-      services: combined.slice(0, 3),
+      rankedServices: ranked.slice(0, 8),
       ngoItems: [],
-      totalCount: combined.length,
+      totalCount: ranked.length,
     };
-  }, [activeCategoryKey, currentLocation, nationalServices, regionalServices, ngos]);
+  }, [activeCategoryKey, showAllNearby, currentLocation, nationalServices, regionalServices, ngos]);
+
+  const hasResolvedView = Boolean(activeCategoryKey || showAllNearby);
 
   const locationLabel = currentLocation
     ? `${currentLocation.localidade} - ${currentLocation.uf}`
@@ -233,7 +255,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
               <span className="text-slate-300" aria-hidden="true">·</span>
               <span className="text-blue-800">{locationLabel}</span>
             </div>
-            {!activeCategoryKey ? (
+            {!hasResolvedView ? (
               <p className="text-xs sm:text-sm text-slate-800 leading-snug">
                 {currentLocation ? (
                   <>
@@ -252,17 +274,20 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                     Você procurou: "{lastUserNeedText}"
                   </span>
                 )}
-                {SECTION_META[activeCategoryKey].empathyMessage}
+                {activeCategoryKey
+                  ? SECTION_META[activeCategoryKey].empathyMessage
+                  : `Aqui estão os atendimentos gratuitos ordenados do mais próximo ao mais distante de ${locationLabel}:`}
               </p>
             )}
           </div>
         </div>
 
-        {activeCategoryKey && (
+        {hasResolvedView && (
           <button
             type="button"
             onClick={() => {
               setUnclearNotice(null);
+              setShowAllNearby(false);
               onUpdateNeed(null, null);
             }}
             className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-800 hover:text-pink-700 whitespace-nowrap shrink-0 py-1 px-2 rounded-lg hover:bg-purple-50 transition-colors"
@@ -274,7 +299,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       </div>
 
       {/* Interactive Need Prompt Form (Ask what she is looking for) */}
-      {!activeCategoryKey && (
+      {!hasResolvedView && (
         <div className="space-y-3">
           <form
             onSubmit={(e) => {
@@ -354,12 +379,23 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => {
+                setUnclearNotice(null);
+                setShowAllNearby(true);
+              }}
+              className="col-span-2 sm:col-span-3 min-h-[38px] px-3 py-2 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-800 text-blue-900 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all"
+            >
+              <span>Ver tudo por proximidade do meu CEP (do mais perto ao mais longe)</span>
+              <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+            </button>
           </div>
         </div>
       )}
 
       {/* Tailored Agent Answer + Immediate Local Results Preview */}
-      {activeCategoryKey && (
+      {hasResolvedView && (
         <div className="space-y-3">
           {!currentLocation && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2.5 text-xs text-blue-950">
@@ -386,9 +422,15 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
             </div>
           )}
 
-          {/* Top 3 Quick Results Right Inside the Agent */}
-          <div className="space-y-2 max-h-[250px] overflow-y-auto pr-0.5">
-            {matchedPreview.services.map((service) => (
+          {/* Ordered Results Nearest-to-Farthest Right Inside the Agent */}
+          {currentLocation && matchedPreview.rankedServices.length > 0 && (
+            <div className="text-[11px] font-semibold text-purple-900">
+              Ordenados do mais próximo ao mais distante de {locationLabel}:
+            </div>
+          )}
+
+          <div className="space-y-2 max-h-[280px] overflow-y-auto pr-0.5">
+            {matchedPreview.rankedServices.map(({ service, distanceLabel }) => (
               <div
                 key={service.id}
                 className="bg-slate-50 rounded-xl border border-slate-200/90 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
@@ -396,12 +438,14 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                 <div className="min-w-0 space-y-0.5">
                   <div className="text-[11px] font-semibold text-pink-700 truncate">
                     {service.subcategory} · {service.isNationalOnline ? 'Todo o Brasil' : `${service.city} - ${service.state}`}
+                    {distanceLabel ? ` · ` : ''}
+                    {distanceLabel && <span className="text-purple-800">{distanceLabel}</span>}
                   </div>
                   <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                     {service.name}
                   </div>
                   <div className="text-[11px] text-slate-600 truncate">
-                    {service.hours}
+                    {service.address ? `${service.address} · ` : ''}{service.hours}
                   </div>
                 </div>
 
@@ -468,14 +512,25 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => onOpenSection(activeCategoryKey)}
-              className="min-h-[42px] flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-700 hover:from-pink-700 hover:to-purple-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs whitespace-nowrap"
-            >
-              <span>Ver todos os resultados ({matchedPreview.totalCount})</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            {activeCategoryKey ? (
+              <button
+                type="button"
+                onClick={() => onOpenSection(activeCategoryKey)}
+                className="min-h-[42px] flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-700 hover:from-pink-700 hover:to-purple-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs whitespace-nowrap"
+              >
+                <span>Ver todos os resultados ({matchedPreview.totalCount})</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowAllNearby(false)}
+                className="min-h-[42px] flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 bg-purple-900 hover:bg-purple-950 text-white text-xs font-semibold rounded-xl transition-all shadow-xs whitespace-nowrap"
+              >
+                <span>Filtrar por área específica</span>
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            )}
 
             {currentLocation && (
               <button

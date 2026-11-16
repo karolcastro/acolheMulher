@@ -29,7 +29,10 @@ export interface ServiceItem {
   city?: string;
   neighborhood?: string;
   address?: string;
+  cep?: string;
   cepRange?: string;
+  lat?: number;
+  lng?: number;
   phone?: string;
   whatsapp?: string;
   website?: string;
@@ -48,6 +51,8 @@ export interface CepInfo {
   localidade: string;
   uf: string;
   ddd?: string;
+  lat?: number;
+  lng?: number;
 }
 
 export interface BenchmarkProject {

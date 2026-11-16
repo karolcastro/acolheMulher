@@ -1,4 +1,5 @@
 import { AppSection, CepInfo } from '../types';
+import { estimateCoordinatesForCepAndCity } from './cepProximity';
 
 const WORD_TO_DIGIT: Record<string, string> = {
   zero: '0',
@@ -259,23 +260,51 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
   if (spokenDigits.length === 8) {
     const formatted = formatCep(spokenDigits);
     try {
-      const res = await fetch(`https://viacep.com.br/ws/${spokenDigits}/json/`);
-      const data = await res.json();
-      if (data.erro) {
+      const brasilApiPromise = (async (): Promise<{ lat?: number; lng?: number; fallbackData?: any }> => {
+        try {
+          const ctrl = new AbortController();
+          const t = window.setTimeout(() => ctrl.abort(), 2200);
+          const r = await fetch(`https://brasilapi.com.br/api/cep/v2/${spokenDigits}`, { signal: ctrl.signal });
+          window.clearTimeout(t);
+          if (!r.ok) return {};
+          const j = await r.json();
+          const lat = Number(j?.location?.coordinates?.latitude);
+          const lng = Number(j?.location?.coordinates?.longitude);
+          return {
+            lat: Number.isFinite(lat) ? lat : undefined,
+            lng: Number.isFinite(lng) ? lng : undefined,
+            fallbackData: j,
+          };
+        } catch {
+          return {};
+        }
+      })();
+
+      const viaCepPromise = fetch(`https://viacep.com.br/ws/${spokenDigits}/json/`).then((r) => r.json());
+      const [data, geoExtra] = await Promise.all([viaCepPromise, brasilApiPromise]);
+
+      if (data.erro && !geoExtra.fallbackData?.city) {
         return {
           formattedInput: formatted,
           suggestedSection,
           error: 'CEP não encontrado. Verifique os números ou fale o nome da sua cidade.',
         };
       }
+
+      const city = data.localidade || geoExtra.fallbackData?.city || '';
+      const uf = data.uf || geoExtra.fallbackData?.state || '';
+      const estimated = estimateCoordinatesForCepAndCity(formatted, city, uf);
+
       return {
         cepInfo: {
           cep: data.cep || formatted,
-          logradouro: data.logradouro || '',
-          bairro: data.bairro || '',
-          localidade: data.localidade,
-          uf: data.uf,
+          logradouro: data.logradouro || geoExtra.fallbackData?.street || '',
+          bairro: data.bairro || geoExtra.fallbackData?.neighborhood || '',
+          localidade: city,
+          uf,
           ddd: data.ddd,
+          lat: geoExtra.lat ?? estimated?.lat,
+          lng: geoExtra.lng ?? estimated?.lng,
         },
         formattedInput: formatted,
         suggestedSection,
@@ -292,6 +321,11 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
   // 2. Check for known Brazilian city or state spoken/typed
   const matchedCity = findKnownCity(trimmed);
   if (matchedCity) {
+    const estimated = estimateCoordinatesForCepAndCity(
+      matchedCity.cep,
+      matchedCity.localidade,
+      matchedCity.uf
+    );
     return {
       cepInfo: {
         cep: matchedCity.cep,
@@ -300,6 +334,8 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
         localidade: matchedCity.localidade,
         uf: matchedCity.uf,
         ddd: matchedCity.ddd,
+        lat: estimated?.lat,
+        lng: estimated?.lng,
       },
       formattedInput: `${matchedCity.localidade} - ${matchedCity.uf}`,
       suggestedSection,
@@ -327,6 +363,7 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
             cityObj?.microrregiao?.mesorregiao?.UF?.sigla ||
             cityObj?.['regiao-imediata']?.['regiao-intermediaria']?.UF?.sigla;
           if (cityObj?.nome && ufSigla) {
+            const estimated = estimateCoordinatesForCepAndCity(undefined, cityObj.nome, ufSigla);
             return {
               cepInfo: {
                 cep: '00000-000',
@@ -334,6 +371,8 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
                 bairro: '',
                 localidade: cityObj.nome,
                 uf: ufSigla,
+                lat: estimated?.lat,
+                lng: estimated?.lng,
               },
               formattedInput: `${cityObj.nome} - ${ufSigla}`,
               suggestedSection,

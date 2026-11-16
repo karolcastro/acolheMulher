@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ServiceCategory, ServiceItem, CepInfo } from '../types';
+import { ServiceCategory, CepInfo } from '../types';
 import { useCatalog } from '../context/CatalogContext';
 import { ServiceCard } from './ServiceCard';
 import { CepVoiceSearchBar } from './CepVoiceSearchBar';
+import { RankedServiceItem, sortServicesByCepProximity } from '../utils/cepProximity';
 import { MapPin, ArrowLeft, ExternalLink } from 'lucide-react';
 
 type HealthSubFilter = 'todos' | 'parto' | 'exames' | 'sus';
@@ -39,41 +40,35 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     }
   }, [currentLocation]);
 
-  const services: ServiceItem[] = React.useMemo(() => {
+  const rankedServices: RankedServiceItem[] = React.useMemo(() => {
     const matchingNational = nationalServices.filter(
       (s) => s.category === category
     );
+    const matchingRegional = regionalServices.filter(
+      (s) => s.category === category
+    );
 
-    let matchingRegional: ServiceItem[] = [];
-    if (currentLocation) {
-      matchingRegional = regionalServices.filter((s) => {
-        if (s.category !== category) return false;
-        const matchesUF = s.state?.toUpperCase() === currentLocation.uf.toUpperCase();
-        const matchesCity =
-          s.city && currentLocation.localidade
-            ? s.city.toLowerCase().includes(currentLocation.localidade.toLowerCase())
-            : false;
-        return matchesUF || matchesCity;
+    let combined = [...matchingRegional, ...matchingNational];
+
+    if (category === 'saude' && healthFilter !== 'todos') {
+      combined = combined.filter((s) => {
+        const sub = `${s.subcategory} ${s.name}`.toLowerCase();
+        const isParto =
+          sub.includes('parto humanizado') ||
+          sub.includes('casa de parto') ||
+          sub.includes('casa do parto');
+        const isExames =
+          sub.includes('exame') ||
+          sub.includes('mamografia') ||
+          sub.includes('papanicolau');
+
+        if (healthFilter === 'parto') return isParto;
+        if (healthFilter === 'exames') return isExames;
+        return !isParto && !isExames;
       });
-    } else {
-      matchingRegional = regionalServices.filter((s) => s.category === category);
     }
 
-    const combined = [...matchingRegional, ...matchingNational];
-
-    if (category !== 'saude' || healthFilter === 'todos') {
-      return combined;
-    }
-
-    return combined.filter((s) => {
-      const sub = `${s.subcategory} ${s.name}`.toLowerCase();
-      const isParto = sub.includes('parto humanizado') || sub.includes('casa de parto') || sub.includes('casa do parto');
-      const isExames = sub.includes('exame') || sub.includes('mamografia') || sub.includes('papanicolau');
-
-      if (healthFilter === 'parto') return isParto;
-      if (healthFilter === 'exames') return isExames;
-      return !isParto && !isExames;
-    });
+    return sortServicesByCepProximity(combined, currentLocation);
   }, [category, currentLocation, healthFilter, nationalServices, regionalServices]);
 
   const matchingNgos = ngos.filter((ngo) =>
@@ -117,7 +112,11 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
             <div className="flex flex-wrap items-center gap-2 text-slate-700">
               <MapPin className="w-4 h-4 text-blue-700 shrink-0" />
               <span>
-                Localização: <strong>{currentLocation.localidade} - {currentLocation.uf}</strong>
+                Ordenado do mais próximo ao mais distante de{' '}
+                <strong>
+                  {currentLocation.localidade} - {currentLocation.uf}
+                  {currentLocation.cep && currentLocation.cep !== '00000-000' ? ` (${currentLocation.cep})` : ''}
+                </strong>
               </span>
               <button
                 type="button"
@@ -160,15 +159,15 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
         )}
       </div>
 
-      {/* Services Grid */}
+      {/* Services Grid Ordered by Distance from CEP */}
       <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {services.map((service) => (
-            <ServiceCard key={service.id} service={service} />
+          {rankedServices.map(({ service, distanceLabel }) => (
+            <ServiceCard key={service.id} service={service} distanceLabel={distanceLabel} />
           ))}
         </div>
 
-        {services.length === 0 && (
+        {rankedServices.length === 0 && (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-2">
             <p className="text-sm font-medium text-slate-800">
               Nenhum serviço específico encontrado para este filtro ou CEP.
