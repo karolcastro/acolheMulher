@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AppSection, CepInfo } from '../types';
 import { SAMPLE_CEPS } from '../data/servicesData';
-import { SUPPORT_NGOS } from '../data/ngosData';
+import { useCatalog } from '../context/CatalogContext';
 import { CepVoiceSearchBar } from './CepVoiceSearchBar';
 import {
   MapPin,
@@ -31,6 +31,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onSelectSection,
   onOpenOfflineModal
 }) => {
+  const { ngos } = useCatalog();
   const [sampleError, setSampleError] = useState<string | null>(null);
 
   const handleSampleCep = async (cep: string) => {
@@ -107,7 +108,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
   ];
 
-  const featuredNgos = SUPPORT_NGOS.filter((n) => n.featured).slice(0, 3);
+  const featuredNgos = ngos.filter((n) => n.featured).slice(0, 3);
 
   const shareUrl =
     typeof window !== 'undefined'
@@ -230,7 +231,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             onClick={() => onSelectSection('ongs_apoio')}
             className="text-xs font-semibold text-rose-700 hover:text-rose-900 whitespace-nowrap shrink-0 hover:underline"
           >
-            Ver todas ({SUPPORT_NGOS.length})
+            Ver todas ({ngos.length})
           </button>
         </div>
 

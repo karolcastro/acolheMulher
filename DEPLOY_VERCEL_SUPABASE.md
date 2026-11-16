@@ -8,24 +8,29 @@ Todos os arquivos de configuração já estão prontos no repositório. Siga os 
 1. Acesse [supabase.com](https://supabase.com), clique em **New Project** e escolha a região **South America (São Paulo)** (`sa-east-1`).
 2. No menu lateral, abra **SQL Editor** → **New query**.
 3. Copie todo o conteúdo do arquivo `supabase/migrations/001_schema_rls.sql` e clique em **Run**.
+   - Se você já havia rodado a versão anterior do `001_schema_rls.sql`, execute também `supabase/migrations/002_enable_realtime.sql` no SQL Editor para liberar o **Supabase Realtime** nas tabelas `services` e `ngos`.
    - Isso cria as tabelas `services`, `ngos` e `partner_profiles` com **Row Level Security (`ENABLE` + `FORCE`)** ativada.
    - O acesso público (`anon`) tem permissão **apenas de leitura (`SELECT`)** em serviços verificados — ninguém consegue alterar ou apagar dados sem autenticação de parceira.
    - Nenhum dado pessoal, CEP consultado ou histórico de busca das usuárias é gravado no banco (*Zero-PII*).
 4. Vá em **Project Settings → API** e copie:
-   - `Project URL` (`SUPABASE_URL`)
-   - `anon public` key (`SUPABASE_ANON_KEY`) — **nunca** exponha a chave `service_role` no frontend.
+   - `Project URL` (`VITE_SUPABASE_URL`)
+   - `anon public` key (`VITE_SUPABASE_ANON_KEY`) — **nunca** exponha a chave `service_role` no frontend.
 
 ---
 
-## Passo 2 — Publicar o Frontend + PWA na Vercel
+## Passo 2 — Publicar o Frontend + PWA + Realtime na Vercel
 1. Acesse [vercel.com](https://vercel.com) e clique em **Add New → Project**.
 2. Conecte seu repositório GitHub: `karolcastro/acolheMulher`.
-3. A Vercel detectará automaticamente o `vercel.json` já configurado com:
+3. Em **Environment Variables** da Vercel, adicione as 2 variáveis públicas para conectar o frontend em tempo real ao Supabase:
+   - `VITE_SUPABASE_URL` = sua Project URL do Supabase
+   - `VITE_SUPABASE_ANON_KEY` = sua chave `anon public` do Supabase
+   *(Se o projeto na Vercel já foi criado, vá em **Settings → Environment Variables**, adicione as duas variáveis e clique em **Deployments → Redeploy**.)*
+4. A Vercel detectará automaticamente o `vercel.json` já configurado com:
    - Build: `npm run build` | Pasta de saída: `dist`
    - Rotas SPA compatíveis com **PWA offline** (`/sw.js` e `/manifest.webmanifest`)
    - Cabeçalhos OWASP (`Referrer-Policy: no-referrer`, `Permissions-Policy: microphone=(self)`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`).
-4. Clique em **Deploy**. Em ~1 minuto seu link `https://...vercel.app` estará online com HTTPS ativo para o PWA Offline e Busca por Voz.
-5. **Privacidade:** deixe o *Vercel Web Analytics* desativado para não registrar IPs ou visitas das usuárias.
+5. Clique em **Deploy**. Em ~1 minuto seu link `https://...vercel.app` estará online com HTTPS ativo para o PWA Offline, Busca por Voz e atualizações em tempo real do Supabase.
+6. **Privacidade:** deixe o *Vercel Web Analytics* desativado para não registrar IPs ou visitas das usuárias.
 
 ---
 

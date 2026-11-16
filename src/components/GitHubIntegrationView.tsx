@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { NATIONAL_SERVICES, REGIONAL_SERVICES } from '../data/servicesData';
-import { Github, ExternalLink, Download, GitPullRequest, Code, Check, Sparkles, Layers, ShieldCheck, HeartHandshake, RefreshCw, GitCommit } from 'lucide-react';
+import { useCatalog } from '../context/CatalogContext';
+import { Github, ExternalLink, Download, GitPullRequest, Code, Check, Sparkles, Layers, ShieldCheck, Database } from 'lucide-react';
 
 export const GitHubIntegrationView: React.FC = () => {
+  const { nationalServices, regionalServices, ngos, isLiveConnected, isSupabaseConfigured } = useCatalog();
   const [repoData, setRepoData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [copiedTemplate, setCopiedTemplate] = useState(false);
@@ -31,9 +32,11 @@ export const GitHubIntegrationView: React.FC = () => {
       repositorio: "https://github.com/karolcastro/acolheMulher",
       versao: "1.0.0",
       data_exportacao: new Date().toISOString(),
-      total_servicos: NATIONAL_SERVICES.length + REGIONAL_SERVICES.length,
-      servicos_nacionais: NATIONAL_SERVICES,
-      servicos_regionais: REGIONAL_SERVICES
+      total_servicos: nationalServices.length + regionalServices.length,
+      total_ongs: ngos.length,
+      servicos_nacionais: nationalServices,
+      servicos_regionais: regionalServices,
+      ongs: ngos
     };
 
     const blob = new Blob([JSON.stringify(fullDatabase, null, 2)], { type: 'application/json' });
@@ -164,9 +167,9 @@ export const GitHubIntegrationView: React.FC = () => {
             </p>
           </div>
 
-          <div className="pt-4 border-t border-stone-100 flex items-center justify-between">
+          <div className="pt-4 border-t border-stone-100 flex items-center justify-between gap-2">
             <span className="text-xs text-stone-500 font-mono">
-              {NATIONAL_SERVICES.length + REGIONAL_SERVICES.length} serviços cadastrados
+              {nationalServices.length + regionalServices.length} serviços · {ngos.length} ONGs
             </span>
             <button
               onClick={handleDownloadJSON}
@@ -222,8 +225,15 @@ export const GitHubIntegrationView: React.FC = () => {
             <Layers className="w-4 h-4 text-rose-700" />
             <span>Backend Python · Clean Architecture + Segurança + MCP</span>
           </div>
-          <span className="text-xs font-medium text-emerald-800">
-            15 testes automatizados aprovados
+          <span className="text-xs font-medium text-emerald-800 inline-flex items-center gap-1.5">
+            <Database className="w-3.5 h-3.5" />
+            <span>
+              {isLiveConnected
+                ? 'Supabase Realtime ativo'
+                : isSupabaseConfigured
+                ? 'Supabase conectado (modo offline-first)'
+                : 'Catálogo offline-first ativo · 17 testes Python aprovados'}
+            </span>
           </span>
         </div>
 

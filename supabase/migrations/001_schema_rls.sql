@@ -257,3 +257,23 @@ INSERT INTO public.ngos (
    ARRAY['Psicoterapia gratuita online ou local', 'Orientação jurídica voluntária'],
    'Formulário online rápido', 'https://www.mapadoacolhimento.org', ARRAY['psicologico', 'juridico', 'emergencia'], TRUE, TRUE, TRUE)
 ON CONFLICT (id) DO NOTHING;
+
+-- ----------------------------------------------------------------------------
+-- 5. Ativar Supabase Realtime para atualizações ao vivo no Frontend
+-- ----------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'services'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.services;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'ngos'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.ngos;
+  END IF;
+END $$;

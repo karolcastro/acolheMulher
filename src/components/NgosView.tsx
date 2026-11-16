@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { SUPPORT_NGOS, NgoHelpArea, NgoItem } from '../data/ngosData';
+import type { NgoHelpArea, NgoItem } from '../data/ngosData';
+import { useCatalog } from '../context/CatalogContext';
 import { ArrowLeft, ExternalLink, CheckCircle2 } from 'lucide-react';
 
 interface NgosViewProps {
@@ -7,6 +8,7 @@ interface NgosViewProps {
 }
 
 export const NgosView: React.FC<NgosViewProps> = ({ onBackToHome }) => {
+  const { ngos } = useCatalog();
   const [selectedArea, setSelectedArea] = useState<NgoHelpArea>('todas');
 
   const areaTabs: { id: NgoHelpArea; label: string }[] = [
@@ -18,9 +20,9 @@ export const NgosView: React.FC<NgosViewProps> = ({ onBackToHome }) => {
   ];
 
   const filteredNgos = React.useMemo(() => {
-    if (selectedArea === 'todas') return SUPPORT_NGOS;
-    return SUPPORT_NGOS.filter((ngo) => ngo.area === selectedArea);
-  }, [selectedArea]);
+    if (selectedArea === 'todas') return ngos;
+    return ngos.filter((ngo) => ngo.area === selectedArea);
+  }, [selectedArea, ngos]);
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">

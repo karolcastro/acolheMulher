@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ServiceCategory, ServiceItem, CepInfo } from '../types';
-import { NATIONAL_SERVICES, REGIONAL_SERVICES } from '../data/servicesData';
-import { SUPPORT_NGOS } from '../data/ngosData';
+import { useCatalog } from '../context/CatalogContext';
 import { ServiceCard } from './ServiceCard';
 import { CepVoiceSearchBar } from './CepVoiceSearchBar';
 import { MapPin, ArrowLeft, ExternalLink } from 'lucide-react';
@@ -26,6 +25,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
   onUpdateLocation,
   onBackToHome
 }) => {
+  const { nationalServices, regionalServices, ngos } = useCatalog();
   const [showCepChange, setShowCepChange] = useState(!currentLocation);
   const [healthFilter, setHealthFilter] = useState<HealthSubFilter>('todos');
 
@@ -40,13 +40,13 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
   }, [currentLocation]);
 
   const services: ServiceItem[] = React.useMemo(() => {
-    const matchingNational = NATIONAL_SERVICES.filter(
+    const matchingNational = nationalServices.filter(
       (s) => s.category === category
     );
 
     let matchingRegional: ServiceItem[] = [];
     if (currentLocation) {
-      matchingRegional = REGIONAL_SERVICES.filter((s) => {
+      matchingRegional = regionalServices.filter((s) => {
         if (s.category !== category) return false;
         const matchesUF = s.state?.toUpperCase() === currentLocation.uf.toUpperCase();
         const matchesCity =
@@ -56,7 +56,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
         return matchesUF || matchesCity;
       });
     } else {
-      matchingRegional = REGIONAL_SERVICES.filter((s) => s.category === category);
+      matchingRegional = regionalServices.filter((s) => s.category === category);
     }
 
     const combined = [...matchingRegional, ...matchingNational];
@@ -74,9 +74,9 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
       if (healthFilter === 'exames') return isExames;
       return !isParto && !isExames;
     });
-  }, [category, currentLocation, healthFilter]);
+  }, [category, currentLocation, healthFilter, nationalServices, regionalServices]);
 
-  const matchingNgos = SUPPORT_NGOS.filter((ngo) =>
+  const matchingNgos = ngos.filter((ngo) =>
     ngo.relatedCategories.includes(
       category as 'juridico' | 'psicologico' | 'saude' | 'cursos' | 'emergencia'
     )

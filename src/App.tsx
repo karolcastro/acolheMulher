@@ -7,11 +7,12 @@ import { PwaShowcase } from './components/PwaShowcase';
 import { NgoPartnerArea } from './components/NgoPartnerArea';
 import { CamouflageView } from './components/CamouflageView';
 import { OfflineAccessModal } from './components/OfflineAccessModal';
+import { CatalogProvider } from './context/CatalogContext';
 import { useOnlineStatus } from './hooks/usePWAInstall';
 import { WifiOff } from 'lucide-react';
 import { AppSection, CepInfo } from './types';
 
-export default function App() {
+function AppContent() {
   const [activeSection, setActiveSection] = useState<AppSection>('inicio');
   const [currentLocation, setCurrentLocation] = useState<CepInfo | null>(null);
   const [isCamouflaged, setIsCamouflaged] = useState(false);
@@ -197,5 +198,13 @@ export default function App() {
         onClose={() => setIsOfflineModalOpen(false)}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <CatalogProvider>
+      <AppContent />
+    </CatalogProvider>
   );
 }
