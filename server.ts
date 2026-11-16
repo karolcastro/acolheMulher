@@ -24,9 +24,21 @@ function normalizeAudioMimeType(raw?: unknown): string {
   return ALLOWED_AUDIO_MIME_TYPES.has(base) ? base : 'audio/webm';
 }
 
+function resolveGeminiApiKey(): string | null {
+  const raw =
+    process.env.GEMINI_API_KEY ??
+    process.env.GOOGLE_API_KEY ??
+    '';
+  const cleaned = raw.replace(/^["']|["']$/g, '').trim();
+  if (!cleaned || cleaned === 'MY_GEMINI_API_KEY') {
+    return null;
+  }
+  return cleaned;
+}
+
 function createGeminiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+  const apiKey = resolveGeminiApiKey();
+  if (!apiKey) {
     return null;
   }
   return new GoogleGenAI({
@@ -53,7 +65,8 @@ async function startServer() {
     const ai = createGeminiClient();
     if (!ai) {
       res.status(503).json({
-        error: 'Transcrição de áudio indisponível no momento. Digite seu CEP ou cidade.',
+        error:
+          'Transcrição por servidor sem chave GEMINI_API_KEY configurada. Configure em Settings > Secrets (ou Vercel) ou digite seu CEP.',
       });
       return;
     }
@@ -104,7 +117,21 @@ async function startServer() {
       }
 
       res.json({ transcript });
-    } catch {
+    } catch (err: unknown) {
+      const status =
+        typeof err === 'object' && err !== null && 'status' in err
+          ? Number((err as { status?: unknown }).status)
+          : undefined;
+      console.error('[transcribe] Upstream error status:', status ?? 'unknown');
+
+      if (status === 400 || status === 401 || status === 403) {
+        res.status(503).json({
+          error:
+            'Chave de transcrição inválida ou sem permissão. Verifique GEMINI_API_KEY em Settings > Secrets ou digite seu CEP.',
+        });
+        return;
+      }
+
       res.status(502).json({
         error: 'Erro temporário ao reconhecer sua voz. Tente novamente ou digite seu CEP.',
       });

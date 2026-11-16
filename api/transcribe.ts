@@ -23,10 +23,12 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  const rawKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? '';
+  const apiKey = rawKey.replace(/^["']|["']$/g, '').trim();
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
     res.status(503).json({
-      error: 'Transcrição de áudio indisponível no momento. Digite seu CEP ou cidade.',
+      error:
+        'Transcrição por servidor sem chave GEMINI_API_KEY configurada. Configure a variável de ambiente ou digite seu CEP.',
     });
     return;
   }
@@ -82,7 +84,21 @@ export default async function handler(req: any, res: any) {
     }
 
     res.status(200).json({ transcript });
-  } catch {
+  } catch (err: unknown) {
+    const status =
+      typeof err === 'object' && err !== null && 'status' in err
+        ? Number((err as { status?: unknown }).status)
+        : undefined;
+    console.error('[api/transcribe] Upstream error status:', status ?? 'unknown');
+
+    if (status === 400 || status === 401 || status === 403) {
+      res.status(503).json({
+        error:
+          'Chave de transcrição inválida ou sem permissão. Verifique GEMINI_API_KEY ou digite seu CEP.',
+      });
+      return;
+    }
+
     res.status(502).json({
       error: 'Erro temporário ao reconhecer sua voz. Tente novamente ou digite seu CEP.',
     });
