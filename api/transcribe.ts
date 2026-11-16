@@ -33,7 +33,19 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const { audioBase64, mimeType } = (req.body ?? {}) as {
+  let parsedBody: Record<string, unknown> = {};
+  if (typeof req.body === 'string') {
+    try {
+      parsedBody = JSON.parse(req.body) as Record<string, unknown>;
+    } catch {
+      res.status(400).json({ error: 'Formato de áudio inválido. Tente falar novamente.' });
+      return;
+    }
+  } else if (req.body && typeof req.body === 'object') {
+    parsedBody = req.body as Record<string, unknown>;
+  }
+
+  const { audioBase64, mimeType } = parsedBody as {
     audioBase64?: unknown;
     mimeType?: unknown;
   };
