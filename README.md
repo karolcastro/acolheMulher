@@ -29,7 +29,7 @@ O projeto reúne um catálogo de serviços e permite explorar opções por assun
 |---|---|---|
 | Frontend | React 19, TypeScript, Vite 8, Tailwind CSS 4, Lucide React, Motion | Interface, componentes e estilos |
 | PWA | vite-plugin-pwa / Workbox | Manifesto, service worker, atualização e cache de recursos estáticos |
-| Backend Node/TypeScript | Express 4, tsx, Google GenAI SDK | Servidor de desenvolvimento/execução própria e endpoints de saúde, CNES e transcrição |
+| Front End Node/TypeScript | Express 4, tsx, Google GenAI SDK | Servidor de desenvolvimento/execução própria e endpoints de saúde, CNES e transcrição |
 | API serverless | Arquivos TypeScript em `api/` | Endpoints `/api/cnes-public` e `/api/transcribe` na plataforma compatível com a convenção Vercel |
 | Backend Python | Python, biblioteca padrão, arquitetura em camadas | API REST independente e servidor MCP |
 | Banco principal | Supabase / PostgreSQL | Catálogo remoto, organizações, políticas RLS e métricas agregadas |
