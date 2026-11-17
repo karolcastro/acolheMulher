@@ -450,12 +450,10 @@ ON CONFLICT (id) DO UPDATE SET
   is_active = EXCLUDED.is_active,
   source_type = EXCLUDED.source_type;
 
--- Garante associacao 3FN em public.ngo_categories para todas as ONGs ativas
-INSERT INTO public.ngo_categories (ngo_id, category_key)
-SELECT n.id, c.cat_key
+-- Garante associacao 3FN em public.ngo_categories (ngo_id, category_sk) para todas as ONGs ativas
+INSERT INTO public.ngo_categories (ngo_id, category_sk)
+SELECT n.id, dc.category_sk
 FROM public.ngos n
 CROSS JOIN LATERAL UNNEST(n.related_categories) AS c(cat_key)
-WHERE EXISTS (
-  SELECT 1 FROM public.dim_categories dc WHERE dc.category_key = c.cat_key
-)
-ON CONFLICT DO NOTHING;
+JOIN public.dim_categories dc ON dc.category_key = LOWER(TRIM(c.cat_key))
+ON CONFLICT (ngo_id, category_sk) DO NOTHING;
