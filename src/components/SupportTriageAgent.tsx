@@ -5,6 +5,8 @@ import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useNearbySusUnits } from '../hooks/useNearbySusUnits';
 import { detectSectionIntent, normalizeText } from '../utils/voiceSearchParser';
 import {
+  buildMapsSusSearchUrl,
+  formatLocationDisplay,
   isFreeOnlineOffer,
   RankedServiceItem,
   sortServicesByCepProximity,
@@ -229,9 +231,15 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       );
       const rankedAll = sortServicesByCepProximity(mergedAll, currentLocation);
       const onlineFirst = rankedAll.filter((r) => isFreeOnlineOffer(r.service));
-      const localAndPhone = rankedAll
-        .filter((r) => !isFreeOnlineOffer(r.service))
-        .slice(0, 14);
+      const allLocal = rankedAll.filter((r) => !isFreeOnlineOffer(r.service));
+      const closeCount = allLocal.filter(
+        (r) => r.distanceKm !== null && r.distanceKm <= 10
+      ).length;
+      const localAndPhone = (
+        closeCount >= 4
+          ? allLocal.filter((r) => r.distanceKm === null || r.distanceKm <= 12)
+          : allLocal
+      ).slice(0, 14);
       return {
         onlineServices: onlineFirst,
         localServices: localAndPhone,
@@ -250,32 +258,55 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     }
 
     if (activeCategoryKey === 'ongs_apoio') {
+      const userUf = currentLocation?.uf?.trim().toUpperCase();
+      const sortedNgos = [...ngos]
+        .filter((ngo) => !ngo.state || !userUf || ngo.state.toUpperCase() === userUf)
+        .sort((a, b) => {
+          if (userUf) {
+            const aLocal = a.state?.toUpperCase() === userUf ? 0 : 1;
+            const bLocal = b.state?.toUpperCase() === userUf ? 0 : 1;
+            if (aLocal !== bLocal) return aLocal - bLocal;
+          }
+          return 0;
+        });
+
       return {
         onlineServices: [] as RankedServiceItem[],
         localServices: [] as RankedServiceItem[],
-        ngoItems: ngos.slice(0, 5),
-        totalCount: ngos.length,
+        ngoItems: sortedNgos.slice(0, 6),
+        totalCount: sortedNgos.length,
       };
     }
 
     const relevantDynamicUnits =
-      activeCategoryKey === 'saude'
+      activeCategoryKey === 'saude' || activeCategoryKey === 'psicologico'
         ? nearbySusUnits
         : activeCategoryKey === 'emergencia'
         ? nearbySusUnits.filter((u) => u.accessMode === 'Plantão 24h')
-        : activeCategoryKey === 'psicologico'
-        ? nearbySusUnits.filter(
-            (u) =>
-              u.subcategory.includes('UBS') ||
-              /\b(ubs|caps|posto|centro de saude|centro de saúde|saude da familia|saúde da família)\b/i.test(
-                u.name
-              )
-          )
         : [];
+
+    const matchingRegional = regionalServices.filter((s) => {
+      if (s.category === activeCategoryKey) return true;
+      if (activeCategoryKey === 'psicologico') {
+        const text = `${s.subcategory} ${s.name} ${(s.tags || []).join(' ')}`.toLowerCase();
+        return (
+          s.category === 'saude' &&
+          (text.includes('ubs') ||
+            text.includes('hospital') ||
+            text.includes('caps') ||
+            text.includes('acolhimento') ||
+            text.includes('psicologia'))
+        );
+      }
+      if (activeCategoryKey === 'emergencia') {
+        return s.category === 'saude' && s.accessMode === 'Plantão 24h';
+      }
+      return false;
+    });
 
     const combined = mergeUnique(
       [
-        ...regionalServices.filter((s) => s.category === activeCategoryKey),
+        ...matchingRegional,
         ...nationalServices.filter((s) => s.category === activeCategoryKey),
       ],
       relevantDynamicUnits
@@ -283,14 +314,41 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
 
     const ranked = sortServicesByCepProximity(combined, currentLocation);
     const onlineFirst = ranked.filter((r) => isFreeOnlineOffer(r.service));
-    const localAndPhone = ranked
-      .filter((r) => !isFreeOnlineOffer(r.service))
-      .slice(0, 12);
+    const allLocalAndPhone = ranked.filter((r) => !isFreeOnlineOffer(r.service));
+    const closePhysicalCount = allLocalAndPhone.filter(
+      (r) => r.distanceKm !== null && r.distanceKm <= 10
+    ).length;
+    const localAndPhone = (
+      closePhysicalCount >= 4
+        ? allLocalAndPhone.filter(
+            (r) => r.distanceKm === null || r.distanceKm <= 12
+          )
+        : allLocalAndPhone
+    ).slice(0, 14);
+
+    const userUf = currentLocation?.uf?.trim().toUpperCase();
+    const categoryNgos = ngos
+      .filter(
+        (ngo) =>
+          ngo.relatedCategories.includes(
+            activeCategoryKey as 'juridico' | 'psicologico' | 'saude' | 'cursos' | 'emergencia'
+          ) &&
+          (!ngo.state || !userUf || ngo.state.toUpperCase() === userUf)
+      )
+      .sort((a, b) => {
+        if (userUf) {
+          const aLocal = a.state?.toUpperCase() === userUf ? 0 : 1;
+          const bLocal = b.state?.toUpperCase() === userUf ? 0 : 1;
+          if (aLocal !== bLocal) return aLocal - bLocal;
+        }
+        return 0;
+      })
+      .slice(0, 4);
 
     return {
       onlineServices: onlineFirst,
       localServices: localAndPhone,
-      ngoItems: [],
+      ngoItems: categoryNgos,
       totalCount: ranked.length,
     };
   }, [activeCategoryKey, showAllNearby, currentLocation, nationalServices, regionalServices, nearbySusUnits, ngos]);
@@ -298,7 +356,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
   const hasResolvedView = Boolean(activeCategoryKey || showAllNearby);
 
   const locationLabel = currentLocation
-    ? `${currentLocation.localidade} - ${currentLocation.uf}`
+    ? formatLocationDisplay(currentLocation)
     : 'todo o Brasil';
 
   const renderRankedRow = ({ service, distanceLabel }: RankedServiceItem) => {
@@ -589,8 +647,8 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
             </div>
           )}
 
-          {/* 1. Free Online Offers FIRST + 2. Nearby UBSs, Hospitals and Local Units (<= 30 km) */}
-          <div className="space-y-3 max-h-[380px] overflow-y-auto pr-0.5">
+          {/* 1. Free Online Offers FIRST + 2. Nearby UBSs, Hospitals and Local Units (<= 30 km) + 3. Matching NGOs */}
+          <div className="space-y-3 max-h-[460px] overflow-y-auto pr-0.5">
             {matchedPreview.onlineServices.length > 0 && (
               <div className="space-y-2">
                 <div className="text-[11px] font-bold text-purple-900 flex items-center gap-1.5">
@@ -608,16 +666,17 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                     <Building2 className="w-3.5 h-3.5 text-blue-700 shrink-0" />
                     <span>
                       {currentLocation
-                        ? `2. UBSs, Hospitais e Locais Próximos em ${currentLocation.localidade} - ${currentLocation.uf} (até 30 km)`
+                        ? `2. UBSs, Hospitais e Locais Próximos a ${locationLabel}`
                         : '2. Telefones 24h e Locais Presenciais'}
                     </span>
                   </div>
 
                   {currentLocation && (
                     <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                        `UBS Posto de Saude Hospital SUS perto de ${currentLocation.localidade} ${currentLocation.uf}`
-                      )}`}
+                      href={buildMapsSusSearchUrl(
+                        currentLocation,
+                        activeCategoryKey === 'emergencia' ? 'emergencia' : 'geral'
+                      )}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[11px] font-semibold text-blue-800 hover:text-pink-700 inline-flex items-center gap-1 underline underline-offset-2"
@@ -639,30 +698,45 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
               </div>
             )}
 
-            {matchedPreview.ngoItems.map((ngo) => (
-              <div
-                key={ngo.id}
-                className="bg-slate-50 rounded-xl border border-slate-200/90 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-              >
-                <div className="min-w-0 space-y-0.5">
-                  <div className="text-[11px] font-semibold text-pink-700 truncate">
-                    {ngo.areaLabel} · {ngo.coverage}
-                  </div>
-                  <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">
-                    {ngo.name}
-                  </div>
+            {matchedPreview.ngoItems.length > 0 && (
+              <div className="space-y-2 pt-1">
+                <div className="text-[11px] font-bold text-purple-900 flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                  <span>
+                    {activeCategoryKey === 'ongs_apoio'
+                      ? 'ONGs que apoiam gratuitamente'
+                      : '3. ONGs que também apoiam nesta área'}
+                  </span>
                 </div>
-                <a
-                  href={ngo.websiteUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="min-h-[36px] inline-flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-pink-600 to-purple-700 text-white text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0"
-                >
-                  <span>Acessar ONG</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                {matchedPreview.ngoItems.map((ngo) => (
+                  <div
+                    key={ngo.id}
+                    className="bg-slate-50 rounded-xl border border-slate-200/90 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="text-[11px] font-semibold text-pink-700 truncate">
+                        {ngo.areaLabel} · {ngo.coverage}
+                      </div>
+                      <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                        {ngo.name}
+                      </div>
+                      <div className="text-[11px] text-slate-600 truncate">
+                        {ngo.accessChannel}
+                      </div>
+                    </div>
+                    <a
+                      href={ngo.websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[36px] inline-flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-pink-600 to-purple-700 text-white text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0"
+                    >
+                      <span>Acessar ONG</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">

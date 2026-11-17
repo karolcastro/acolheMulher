@@ -4,6 +4,8 @@ import { useCatalog } from '../context/CatalogContext';
 import { ServiceCard } from './ServiceCard';
 import { CepVoiceSearchBar } from './CepVoiceSearchBar';
 import {
+  buildMapsSusSearchUrl,
+  formatLocationDisplay,
   isFreeOnlineOffer,
   RankedServiceItem,
   sortServicesByCepProximity,
@@ -66,23 +68,30 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     const matchingNational = nationalServices.filter(
       (s) => s.category === category
     );
-    const matchingRegional = regionalServices.filter(
-      (s) => s.category === category
-    );
+    const matchingRegional = regionalServices.filter((s) => {
+      if (s.category === category) return true;
+      if (category === 'psicologico') {
+        const text = `${s.subcategory} ${s.name} ${(s.tags || []).join(' ')}`.toLowerCase();
+        return (
+          s.category === 'saude' &&
+          (text.includes('ubs') ||
+            text.includes('hospital') ||
+            text.includes('caps') ||
+            text.includes('acolhimento') ||
+            text.includes('psicologia'))
+        );
+      }
+      if (category === 'emergencia') {
+        return s.category === 'saude' && s.accessMode === 'Plantão 24h';
+      }
+      return false;
+    });
 
     const relevantSusUnits =
-      category === 'saude'
+      category === 'saude' || category === 'psicologico'
         ? nearbySusUnits
         : category === 'emergencia'
         ? nearbySusUnits.filter((u) => u.accessMode === 'Plantão 24h')
-        : category === 'psicologico'
-        ? nearbySusUnits.filter(
-            (u) =>
-              u.subcategory.includes('UBS') ||
-              /\b(ubs|caps|posto|centro de saude|centro de saúde|saude da familia|saúde da família)\b/i.test(
-                u.name
-              )
-          )
         : [];
 
     let combined = mergeUniqueServices(
@@ -116,16 +125,36 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     [rankedServices]
   );
 
-  const localAndPhoneServices = useMemo(
-    () => rankedServices.filter((item) => !isFreeOnlineOffer(item.service)),
-    [rankedServices]
-  );
+  const localAndPhoneServices = useMemo(() => {
+    const allLocal = rankedServices.filter((item) => !isFreeOnlineOffer(item.service));
+    const closePhysicalCount = allLocal.filter(
+      (r) => r.distanceKm !== null && r.distanceKm <= 10
+    ).length;
+    if (closePhysicalCount >= 4) {
+      return allLocal.filter((r) => r.distanceKm === null || r.distanceKm <= 12);
+    }
+    return allLocal;
+  }, [rankedServices]);
 
-  const matchingNgos = ngos.filter((ngo) =>
-    ngo.relatedCategories.includes(
-      category as 'juridico' | 'psicologico' | 'saude' | 'cursos' | 'emergencia'
-    )
-  );
+  const matchingNgos = useMemo(() => {
+    const userUf = currentLocation?.uf?.trim().toUpperCase();
+    return ngos
+      .filter(
+        (ngo) =>
+          ngo.relatedCategories.includes(
+            category as 'juridico' | 'psicologico' | 'saude' | 'cursos' | 'emergencia'
+          ) &&
+          (!ngo.state || !userUf || ngo.state.toUpperCase() === userUf)
+      )
+      .sort((a, b) => {
+        if (userUf) {
+          const aLocal = a.state?.toUpperCase() === userUf ? 0 : 1;
+          const bLocal = b.state?.toUpperCase() === userUf ? 0 : 1;
+          if (aLocal !== bLocal) return aLocal - bLocal;
+        }
+        return 0;
+      });
+  }, [ngos, category, currentLocation]);
 
   const healthTabs: { id: HealthSubFilter; label: string }[] = [
     { id: 'todos', label: 'Todos' },
@@ -139,11 +168,10 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     (category === 'saude' || category === 'emergencia' || category === 'psicologico');
 
   const mapsSusUrl = currentLocation
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        category === 'emergencia'
-          ? `Hospital UPA Delegacia da Mulher perto de ${currentLocation.localidade} ${currentLocation.uf}`
-          : `UBS Posto de Saude Hospital SUS perto de ${currentLocation.localidade} ${currentLocation.uf}`
-      )}`
+    ? buildMapsSusSearchUrl(
+        currentLocation,
+        category === 'emergencia' ? 'emergencia' : 'geral'
+      )
     : '';
 
   return (
@@ -174,11 +202,8 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
             <div className="flex flex-wrap items-center gap-2 text-slate-700">
               <MapPin className="w-4 h-4 text-blue-700 shrink-0" />
               <span>
-                Mostrando <strong>ofertas online gratuitas primeiro</strong> e unidades em até 30 km de{' '}
-                <strong>
-                  {currentLocation.localidade} - {currentLocation.uf}
-                  {currentLocation.cep && currentLocation.cep !== '00000-000' ? ` (${currentLocation.cep})` : ''}
-                </strong>
+                Mostrando <strong>ofertas online gratuitas primeiro</strong> e unidades próximas a{' '}
+                <strong>{formatLocationDisplay(currentLocation)}</strong>
               </span>
               <button
                 type="button"
@@ -250,7 +275,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
               <Building2 className="w-5 h-5 text-blue-800 shrink-0" />
               <span>
                 {currentLocation
-                  ? `2. UBSs, Hospitais e Locais Próximos em ${currentLocation.localidade} - ${currentLocation.uf} (até 30 km)`
+                  ? `2. UBSs, Hospitais e Locais Próximos a ${formatLocationDisplay(currentLocation)}`
                   : '2. Telefones 24h e Unidades Presenciais'}
               </span>
             </h2>

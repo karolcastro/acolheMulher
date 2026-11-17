@@ -17,9 +17,12 @@ const CEP_PREFIX3_COORDS: Record<string, Coord> = {
   '020': { lat: -23.5015, lng: -46.6248 }, // Santana / Zona Norte
   '021': { lat: -23.5112, lng: -46.5882 }, // Vila Maria
   '022': { lat: -23.4795, lng: -46.5974 }, // Tucuruvi
-  '024': { lat: -23.4832, lng: -46.6382 }, // Mandaqui
+  '023': { lat: -23.4585, lng: -46.6205 }, // Tremembé / Horto Florestal
+  '024': { lat: -23.4832, lng: -46.6382 }, // Mandaqui / Lauzane Paulista
   '025': { lat: -23.5055, lng: -46.6632 }, // Casa Verde
-  '027': { lat: -23.4956, lng: -46.6884 }, // Freguesia do Ó
+  '026': { lat: -23.4655, lng: -46.6520 }, // Jardim Peri / Cachoeirinha / Horto
+  '027': { lat: -23.4956, lng: -46.6884 }, // Freguesia do Ó / Cachoeirinha
+  '028': { lat: -23.4715, lng: -46.6935 }, // Brasilândia
   '029': { lat: -23.4778, lng: -46.7271 }, // Pirituba
   '030': { lat: -23.5385, lng: -46.5985 }, // Brás / Belém
   '031': { lat: -23.5612, lng: -46.5872 }, // Mooca
@@ -238,6 +241,37 @@ function getNumericCep(cep?: string): number | null {
 
 export const MAX_PROXIMITY_KM = 30;
 
+export function formatLocationDisplay(location: CepInfo): string {
+  const parts = [
+    location.bairro?.trim(),
+    `${location.localidade} - ${location.uf}`,
+  ].filter(Boolean);
+  const cepSuffix =
+    location.cep && location.cep !== '00000-000' ? ` (${location.cep})` : '';
+  return `${parts.join(', ')}${cepSuffix}`;
+}
+
+export function buildMapsSusSearchUrl(
+  location: CepInfo,
+  topic: 'emergencia' | 'geral' = 'geral'
+): string {
+  const queryLabel =
+    topic === 'emergencia'
+      ? 'Hospital UPA Delegacia da Mulher'
+      : 'UBS Posto de Saúde Hospital SUS';
+
+  if (typeof location.lat === 'number' && typeof location.lng === 'number') {
+    return `https://www.google.com/maps/search/${encodeURIComponent(
+      queryLabel
+    )}/@${location.lat.toFixed(6)},${location.lng.toFixed(6)},14z`;
+  }
+
+  const cepPart = location.cep && location.cep !== '00000-000' ? location.cep : '';
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    `${queryLabel} ${location.bairro || ''} ${cepPart} ${location.localidade} ${location.uf}`.trim()
+  )}`;
+}
+
 export function isFreeOnlineOffer(service: ServiceItem): boolean {
   return Boolean(
     service.isNationalOnline &&
@@ -361,7 +395,7 @@ export function sortServicesByCepProximity(
 
     if (a.distanceKm !== null && b.distanceKm !== null) {
       const diff = a.distanceKm - b.distanceKm;
-      if (Math.abs(diff) > 0.25) {
+      if (Math.abs(diff) > 0.05) {
         return diff;
       }
     }

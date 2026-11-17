@@ -277,6 +277,34 @@ async function geocodeBrazilPlace(query: string): Promise<{ lat: number; lng: nu
   }
 }
 
+function parseValidCoord(raw: unknown): number | undefined {
+  if (raw === null || raw === undefined || raw === '') return undefined;
+  const num = Number(raw);
+  if (!Number.isFinite(num) || Math.abs(num) < 0.01) return undefined;
+  return num;
+}
+
+async function geocodeCepAddress(
+  street: string,
+  neighborhood: string,
+  city: string,
+  uf: string
+): Promise<{ lat: number; lng: number } | null> {
+  if (!city || !uf) return null;
+
+  if (street) {
+    const byStreet = await geocodeBrazilPlace(`${street}, ${city}, ${uf}, Brasil`);
+    if (byStreet) return byStreet;
+  }
+
+  if (neighborhood) {
+    const byBairro = await geocodeBrazilPlace(`${neighborhood}, ${city}, ${uf}, Brasil`);
+    if (byBairro) return byBairro;
+  }
+
+  return null;
+}
+
 export async function resolveLocationQuery(rawQuery: string): Promise<LocationResolutionResult> {
   const trimmed = rawQuery.trim();
   const suggestedSection = detectSectionIntent(trimmed);
@@ -289,16 +317,14 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
       const brasilApiPromise = (async (): Promise<{ lat?: number; lng?: number; fallbackData?: any }> => {
         try {
           const ctrl = new AbortController();
-          const t = window.setTimeout(() => ctrl.abort(), 2200);
+          const t = window.setTimeout(() => ctrl.abort(), 2500);
           const r = await fetch(`https://brasilapi.com.br/api/cep/v2/${spokenDigits}`, { signal: ctrl.signal });
           window.clearTimeout(t);
           if (!r.ok) return {};
           const j = await r.json();
-          const lat = Number(j?.location?.coordinates?.latitude);
-          const lng = Number(j?.location?.coordinates?.longitude);
           return {
-            lat: Number.isFinite(lat) ? lat : undefined,
-            lng: Number.isFinite(lng) ? lng : undefined,
+            lat: parseValidCoord(j?.location?.coordinates?.latitude),
+            lng: parseValidCoord(j?.location?.coordinates?.longitude),
             fallbackData: j,
           };
         } catch {
@@ -306,7 +332,10 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
         }
       })();
 
-      const viaCepPromise = fetch(`https://viacep.com.br/ws/${spokenDigits}/json/`).then((r) => r.json());
+      const viaCepPromise = fetch(`https://viacep.com.br/ws/${spokenDigits}/json/`)
+        .then((r) => (r.ok ? r.json() : { erro: true }))
+        .catch(() => ({ erro: true }));
+
       const [data, geoExtra] = await Promise.all([viaCepPromise, brasilApiPromise]);
 
       if (data.erro && !geoExtra.fallbackData?.city) {
@@ -317,27 +346,18 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
         };
       }
 
-      const city = data.localidade || geoExtra.fallbackData?.city || '';
-      const uf = data.uf || geoExtra.fallbackData?.state || '';
-      const street = data.logradouro || geoExtra.fallbackData?.street || '';
-      const neighborhood = data.bairro || geoExtra.fallbackData?.neighborhood || '';
+      const city = (data.localidade || geoExtra.fallbackData?.city || '').trim();
+      const uf = (data.uf || geoExtra.fallbackData?.state || '').trim();
+      const street = (data.logradouro || geoExtra.fallbackData?.street || '').trim();
+      const neighborhood = (data.bairro || geoExtra.fallbackData?.neighborhood || '').trim();
       const estimated = estimateCoordinatesForCepAndCity(formatted, city, uf);
 
-      let resolvedLat = geoExtra.lat;
-      let resolvedLng = geoExtra.lng;
+      // IMPORTANT: BrasilAPI often returns the city center (e.g. Praça da Sé for ALL of São Paulo).
+      // Always geocode the exact street/bairro from ViaCEP so every CEP searches its own neighborhood!
+      const geocodedStreetOrBairro = await geocodeCepAddress(street, neighborhood, city, uf);
 
-      if ((typeof resolvedLat !== 'number' || typeof resolvedLng !== 'number') && city && uf) {
-        const placeQuery = street
-          ? `${street}, ${city}, ${uf}, Brasil`
-          : neighborhood
-          ? `${neighborhood}, ${city}, ${uf}, Brasil`
-          : `${city}, ${uf}, Brasil`;
-        const geocoded = await geocodeBrazilPlace(placeQuery);
-        if (geocoded) {
-          resolvedLat = geocoded.lat;
-          resolvedLng = geocoded.lng;
-        }
-      }
+      const resolvedLat = geocodedStreetOrBairro?.lat ?? estimated?.lat ?? geoExtra.lat;
+      const resolvedLng = geocodedStreetOrBairro?.lng ?? estimated?.lng ?? geoExtra.lng;
 
       return {
         cepInfo: {
@@ -347,8 +367,8 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
           localidade: city,
           uf,
           ddd: data.ddd,
-          lat: resolvedLat ?? estimated?.lat,
-          lng: resolvedLng ?? estimated?.lng,
+          lat: resolvedLat,
+          lng: resolvedLng,
         },
         formattedInput: formatted,
         suggestedSection,

@@ -8,6 +8,8 @@ export interface NgoItem {
   area: Exclude<NgoHelpArea, 'todas'>;
   areaLabel: string;
   coverage: string;
+  state?: string;
+  city?: string;
   accessChannel: string;
   summary: string;
   howTheyHelp: string[];
@@ -17,6 +19,48 @@ export interface NgoItem {
 }
 
 export const SUPPORT_NGOS: NgoItem[] = [
+  {
+    id: 'ngo-nova-mulher-sp-zn',
+    name: 'ONG Nova Mulher — Centro Psicossocial (Zona Norte SP)',
+    organization: 'ONG Nova Mulher · Vila Nova Cachoeirinha',
+    featured: true,
+    area: 'psicologico_juridico',
+    areaLabel: 'Psicologia & Assistência Social',
+    coverage: 'São Paulo - SP (Zona Norte · Cachoeirinha e região)',
+    state: 'SP',
+    city: 'São Paulo',
+    accessChannel: 'Atendimento presencial e WhatsApp Psicossocial: (11) 98641-0956',
+    summary: 'Atendimento psicossocial gratuito com psicólogas e assistentes sociais para mulheres na Zona Norte de São Paulo (Vila Nova Cachoeirinha, Horto, Mandaqui e Lauzane).',
+    howTheyHelp: [
+      'Acolhimento psicológico e escuta social gratuita para mulheres',
+      'Orientação e encaminhamento para rede de proteção e direitos',
+      'Oficinas de fortalecimento e geração de autonomia'
+    ],
+    websiteUrl: 'https://ongnovamulher.org',
+    privacyNote: 'Rua Adolfo Kurt Bohem, 43 - Vila Nova Cachoeirinha, São Paulo - SP.',
+    relatedCategories: ['psicologico', 'juridico', 'emergencia', 'cursos']
+  },
+  {
+    id: 'ngo-fala-mulher-sp',
+    name: 'Associação Fala Mulher',
+    organization: 'Associação Fala Mulher · Rede de Proteção SP',
+    featured: true,
+    area: 'psicologico_juridico',
+    areaLabel: 'Psicologia & Defesa da Mulher',
+    coverage: 'São Paulo e Grande SP (Centros de Defesa da Mulher)',
+    state: 'SP',
+    city: 'São Paulo',
+    accessChannel: 'Atendimento multidisciplinar gratuito e canais oficiais',
+    summary: 'Organização que administra Centros de Defesa e de Convivência da Mulher (CDCM) com atendimento psicológico, serviço social e orientação jurídica gratuitos.',
+    howTheyHelp: [
+      'Acompanhamento psicológico individual e em grupo para mulheres',
+      'Orientação jurídica sobre Lei Maria da Penha e direitos da família',
+      'Apoio para reconstrução de projeto de vida e autonomia'
+    ],
+    websiteUrl: 'https://falamulher.ong.br',
+    privacyNote: 'Atendimento gratuito e sigiloso sem exigir boletim de ocorrência.',
+    relatedCategories: ['psicologico', 'juridico', 'emergencia']
+  },
   {
     id: 'ngo-mapa-acolhimento',
     name: 'Mapa do Acolhimento',

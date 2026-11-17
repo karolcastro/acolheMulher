@@ -26,11 +26,11 @@ function isLikelyPublicHealthUnit(tags: Record<string, string>): {
   const operatorType = (tags['operator:type'] || tags.operator || '').toLowerCase();
 
   const isUbsName =
-    /\b(ubs|unidade basica|unidade básica|posto de saude|posto de saúde|centro de saude|centro de saúde|psf|esf|ama|clinica da familia|clínica da família|saude da familia|saúde da família|policlinica|policlínica|caps)\b/i.test(
+    /\b(ubs|unidade basica|unidade básica|posto de saude|posto de saúde|centro de saude|centro de saúde|psf|esf|ama|clinica da familia|clínica da família|saude da familia|saúde da família|policlinica|policlínica|caps|casa da mulher|cram|cdcm|creas)\b/i.test(
       name
     );
   const isUpaName = /\b(upa|pronto atendimento|pronto socorro|pronto-socorro)\b/i.test(name);
-  const isHospitalName = /\b(hospital|maternidade|santa casa|pronto-socorro)\b/i.test(name);
+  const isHospitalName = /\b(hospital|maternidade|santa casa|pronto-socorro|conjunto hospitalar)\b/i.test(name);
 
   if (isUbsName) {
     return { matched: true, kind: 'ubs' };
@@ -171,91 +171,126 @@ async function queryOverpass(endpoint: string, query: string): Promise<OverpassE
   }
 }
 
-async function queryNominatimFallback(
+async function queryNominatimBounded(
   location: CepInfo,
   userLat: number,
   userLng: number
-): Promise<ServiceItem[]> {
+): Promise<{ item: ServiceItem; distanceKm: number }[]> {
+  const bairro = location.bairro?.trim();
   const queries = [
-    `UBS ${location.localidade} ${location.uf} Brasil`,
-    `Hospital ${location.localidade} ${location.uf} Brasil`,
+    bairro ? `UBS ${bairro} ${location.localidade}` : 'UBS',
+    'UBS',
+    'Hospital',
+    'CAPS',
   ];
+
+  // Tight bounding box (~9 km around the searched CEP coordinates)
+  const deltaLat = 0.082;
+  const deltaLng = 0.088;
+  const viewbox = `${(userLng - deltaLng).toFixed(4)},${(userLat + deltaLat).toFixed(4)},${(
+    userLng + deltaLng
+  ).toFixed(4)},${(userLat - deltaLat).toFixed(4)}`;
 
   const found: { item: ServiceItem; distanceKm: number }[] = [];
   const seen = new Set<string>();
 
-  for (const q of queries) {
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 3500);
-    try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=br&limit=8&q=${encodeURIComponent(
-        q
-      )}`;
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) continue;
-      const results = (await res.json()) as Array<{
-        place_id: number;
-        display_name?: string;
-        name?: string;
-        lat: string;
-        lon: string;
-        address?: Record<string, string>;
-      }>;
-
-      for (const r of results) {
-        const lat = Number(r.lat);
-        const lng = Number(r.lon);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-
-        const distanceKm = haversineDistanceKm(userLat, userLng, lat, lng);
-        if (distanceKm > MAX_PROXIMITY_KM) continue;
-
-        const name = (r.name || r.display_name?.split(',')[0] || '').trim();
-        if (!name || seen.has(name.toLowerCase())) continue;
-        seen.add(name.toLowerCase());
-
-        const isUbs = /ubs|unidade|posto|centro de saude|centro de saúde|esf|ama|caps/i.test(name);
-        const addr = r.address || {};
-        const road = addr.road || '';
-        const suburb = addr.suburb || addr.neighbourhood || '';
-        const city = addr.city || addr.town || addr.municipality || location.localidade;
-
-        found.push({
-          distanceKm,
-          item: {
-            id: `nom-${r.place_id}`,
-            name,
-            category: 'saude',
-            subcategory: isUbs
-              ? 'UBS / Posto de Saúde Próximo (SUS)'
-              : 'Hospital / Unidade de Saúde Próxima',
-            description: isUbs
-              ? 'Unidade Básica de Saúde localizada próxima ao seu CEP para pré-natal, preventivo, consultas médicas e acolhimento pelo SUS.'
-              : 'Hospital / unidade de saúde próxima ao seu CEP para atendimento médico, urgências e saúde da mulher.',
-            state: location.uf,
-            city,
-            neighborhood: suburb || undefined,
-            address: [road, suburb, `${city} - ${location.uf}`].filter(Boolean).join(' · '),
-            lat,
-            lng,
-            phone: '136',
-            hours: isUbs ? 'Segunda a Sexta (horário UBS)' : 'Atendimento 24 horas (confirmar urgência)',
-            accessMode: isUbs ? 'Livre Demanda (Porta Aberta)' : 'Plantão 24h',
-            requiresRegistration: false,
-            freeConfirmation: 'Atendimento gratuito pelo SUS.',
-            tags: isUbs ? ['UBS', 'Posto de Saúde', 'SUS'] : ['Hospital', 'SUS', 'Saúde'],
-          },
-        });
+  const responses = await Promise.all(
+    queries.map(async (q) => {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 4000);
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=br&bounded=1&viewbox=${viewbox}&limit=10&q=${encodeURIComponent(
+          q
+        )}`;
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) return [];
+        return (await res.json()) as Array<{
+          place_id: number;
+          display_name?: string;
+          name?: string;
+          class?: string;
+          type?: string;
+          lat: string;
+          lon: string;
+          address?: Record<string, string>;
+        }>;
+      } catch {
+        return [];
+      } finally {
+        window.clearTimeout(timeoutId);
       }
-    } catch {
-      // ignore timeout/offline
-    } finally {
-      window.clearTimeout(timeoutId);
+    })
+  );
+
+  for (const results of responses) {
+    for (const r of results) {
+      const lat = Number(r.lat);
+      const lng = Number(r.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+      const distanceKm = haversineDistanceKm(userLat, userLng, lat, lng);
+      if (distanceKm > MAX_PROXIMITY_KM) continue;
+
+      const name = (r.name || r.display_name?.split(',')[0] || '').trim();
+      if (!name || name.length < 3) continue;
+
+      // Filter out unrelated commercial POIs returned by generic search
+      const isHealthRelated =
+        /\b(ubs|ama|upa|caps|unidade|posto|centro de sa[uú]de|hospital|maternidade|pronto|santa casa|cl[ií]nica da fam[ií]lia|casa da mulher|cram|creas)\b/i.test(
+          name
+        ) ||
+        r.type === 'hospital' ||
+        r.type === 'clinic' ||
+        r.class === 'healthcare';
+      if (!isHealthRelated) continue;
+
+      const norm = name.toLowerCase();
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+
+      const isUbs = /\b(ubs|ama|caps|unidade|posto|centro de sa[uú]de|esf|cl[ií]nica da fam[ií]lia)\b/i.test(
+        name
+      );
+      const isUpa = /\b(upa|pronto atendimento|pronto[- ]socorro)\b/i.test(name);
+      const addr = r.address || {};
+      const road = addr.road || '';
+      const suburb = addr.suburb || addr.neighbourhood || '';
+      const city = addr.city || addr.town || addr.municipality || location.localidade;
+
+      found.push({
+        distanceKm,
+        item: {
+          id: `nom-${r.place_id}`,
+          name,
+          category: 'saude',
+          subcategory: isUbs
+            ? 'UBS / Posto de Saúde Próximo (SUS)'
+            : isUpa
+            ? 'UPA / Pronto Atendimento 24h (SUS)'
+            : 'Hospital / Unidade de Saúde Próxima',
+          description: isUbs
+            ? 'Unidade Básica de Saúde localizada próxima ao CEP informado para acolhimento, saúde da mulher, pré-natal, preventivo e encaminhamento em saúde mental pelo SUS.'
+            : isUpa
+            ? 'Pronto atendimento de urgência gratuito próximo ao CEP informado.'
+            : 'Hospital / unidade de saúde próxima ao CEP informado para atendimento médico, urgências e acolhimento.',
+          state: location.uf,
+          city,
+          neighborhood: suburb || undefined,
+          address: [road, suburb, `${city} - ${location.uf}`].filter(Boolean).join(' · '),
+          lat,
+          lng,
+          phone: '136',
+          hours: isUbs ? 'Segunda a Sexta (horário UBS)' : 'Atendimento 24 horas (confirmar urgência)',
+          accessMode: isUbs ? 'Livre Demanda (Porta Aberta)' : 'Plantão 24h',
+          requiresRegistration: false,
+          freeConfirmation: 'Atendimento gratuito pelo SUS.',
+          tags: isUbs ? ['UBS', 'Posto de Saúde', 'SUS', 'Acolhimento'] : ['Hospital', 'SUS', 'Saúde'],
+        },
+      });
     }
   }
 
-  found.sort((a, b) => a.distanceKm - b.distanceKm);
-  return found.slice(0, 12).map((x) => x.item);
+  return found;
 }
 
 /**
@@ -273,26 +308,32 @@ export async function fetchNearbySusUnits(location: CepInfo | null): Promise<Ser
 
   if (!coords) return [];
 
-  const cacheKey = `${location.uf}|${coords.lat.toFixed(3)}|${coords.lng.toFixed(3)}`;
+  const cacheKey = `${location.cep}|${location.uf}|${coords.lat.toFixed(4)}|${coords.lng.toFixed(4)}`;
   const cached = nearbyHealthCache.get(cacheKey);
   if (cached) return cached;
 
-  const radiusMeters = 18000; // 18 km core search around exact CEP (always <= 30 km)
+  // Indexed Overpass query (fast tag-based lookup without full-node regex scan)
   const overpassQuery = `
 [out:json][timeout:6];
 (
-  node["amenity"~"hospital|clinic"](around:${radiusMeters},${coords.lat},${coords.lng});
-  way["amenity"~"hospital|clinic"](around:${radiusMeters},${coords.lat},${coords.lng});
-  node["healthcare"~"hospital|centre|clinic"](around:${radiusMeters},${coords.lat},${coords.lng});
-  way["healthcare"~"hospital|centre|clinic"](around:${radiusMeters},${coords.lat},${coords.lng});
+  nwr["amenity"="hospital"](around:8000,${coords.lat},${coords.lng});
+  nwr["amenity"="clinic"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Hospital|Maternidade|Cl[ií]nica da Fam[ií]lia)",i](around:6000,${coords.lat},${coords.lng});
+  nwr["healthcare"~"hospital|centre|clinic"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Hospital|Maternidade|Cl[ií]nica da Fam[ií]lia)",i](around:6000,${coords.lat},${coords.lng});
 );
-out center tags 40;
+out center tags 80;
 `;
 
-  let elements = await queryOverpass('https://overpass-api.de/api/interpreter', overpassQuery);
-  if (elements.length === 0) {
-    elements = await queryOverpass('https://overpass.kumi.systems/api/interpreter', overpassQuery);
-  }
+  // Run Nominatim bounded search in parallel with Overpass so results are fast and reliable even if Overpass returns 502
+  const overpassPromise = (async () => {
+    let elements = await queryOverpass('https://overpass-api.de/api/interpreter', overpassQuery);
+    if (elements.length === 0) {
+      elements = await queryOverpass('https://overpass.kumi.systems/api/interpreter', overpassQuery);
+    }
+    return elements;
+  })();
+
+  const nominatimPromise = queryNominatimBounded(location, coords.lat, coords.lng);
+  const [elements, nomMapped] = await Promise.all([overpassPromise, nominatimPromise]);
 
   const mapped: { item: ServiceItem; distanceKm: number }[] = [];
   const seenNames = new Set<string>();
@@ -306,14 +347,16 @@ out center tags 40;
     mapped.push(res);
   }
 
-  mapped.sort((a, b) => a.distanceKm - b.distanceKm);
-
-  let finalItems = mapped.slice(0, 14).map((m) => m.item);
-
-  if (finalItems.length === 0) {
-    finalItems = await queryNominatimFallback(location, coords.lat, coords.lng);
+  for (const nom of nomMapped) {
+    const normName = nom.item.name.toLowerCase();
+    if (seenNames.has(normName)) continue;
+    seenNames.add(normName);
+    mapped.push(nom);
   }
 
+  mapped.sort((a, b) => a.distanceKm - b.distanceKm);
+
+  const finalItems = mapped.slice(0, 20).map((m) => m.item);
   nearbyHealthCache.set(cacheKey, finalItems);
   return finalItems;
 }

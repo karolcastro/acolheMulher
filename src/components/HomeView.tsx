@@ -4,6 +4,7 @@ import { useCatalog } from '../context/CatalogContext';
 import { CepVoiceSearchBar, SearchResolvedPayload } from './CepVoiceSearchBar';
 import { SupportTriageAgent } from './SupportTriageAgent';
 import { recordAnonymousSearchDemand } from '../utils/demandAnalytics';
+import { formatLocationDisplay } from '../utils/cepProximity';
 import heroWomanRefugeImg from '../assets/images/hero_woman_refuge_1794861297510.jpg';
 import {
   MapPin,
@@ -304,7 +305,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-950 rounded-xl border border-blue-200 font-medium">
                     <MapPin className="w-3.5 h-3.5 text-blue-700 shrink-0" />
                     <span>
-                      Locais em <strong>{currentLocation.localidade} - {currentLocation.uf}</strong>
+                      Locais em <strong>{formatLocationDisplay(currentLocation)}</strong>
                     </span>
                     <button
                       type="button"
