@@ -42,6 +42,7 @@ export interface ServiceItem {
   freeConfirmation: string;
   tags: string[];
   tipsForVictim?: string;
+  distanceKmHint?: number;
 }
 
 export interface CepInfo {
@@ -54,6 +55,10 @@ export interface CepInfo {
   ibge?: string;
   lat?: number;
   lng?: number;
+  cityNormalized?: string;
+  stateNormalized?: string;
+  macroRegion?: string;
+  locationSource?: 'viacep' | 'brasilapi' | 'opencep' | 'catalog' | 'ibge';
 }
 
 export interface BenchmarkProject {

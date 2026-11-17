@@ -20,10 +20,18 @@ const PORTUGUESE_ACCENT_FIXES: Array<[RegExp, string]> = [
   [/\bregulacao\b/gi, 'Regulação'],
   [/\bpoliclinica\b/gi, 'Policlínica'],
   [/\bsao\b/gi, 'São'],
+  [/\bluis\b/gi, 'Luís'],
+  [/\bmaranhao\b/gi, 'Maranhão'],
+  [/\bbequimao\b/gi, 'Bequimão'],
+  [/\bsocorra[oõ]\b/gi, 'Socorrão'],
+  [/\balcool\b/gi, 'Álcool'],
+  [/\bparaiso\b/gi, 'Paraíso'],
   [/\bjose\b/gi, 'José'],
   [/\bjoao\b/gi, 'João'],
   [/\bantonio\b/gi, 'Antônio'],
   [/\bmaria\b/gi, 'Maria'],
+  [/\blucia\b/gi, 'Lúcia'],
+  [/\baguas\b/gi, 'Águas'],
   [/\bcatoles\b/gi, 'Catolés'],
   [/\babaira\b/gi, 'Abaíra'],
   [/\bpiata\b/gi, 'Piatã'],
@@ -135,12 +143,16 @@ interface CnesRawEstabelecimento {
   longitude_estabelecimento_decimo_grau?: number | null;
 }
 
-async function fetchCnesBatch(ibge6: string, tipoUnidade?: number, limit = 100): Promise<CnesRawEstabelecimento[]> {
+async function fetchCnesBatch(
+  ibge6: string,
+  tipoUnidade?: number,
+  offset = 0
+): Promise<CnesRawEstabelecimento[]> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 4500);
+  const timer = setTimeout(() => ctrl.abort(), 4000);
   try {
     const tipoParam = typeof tipoUnidade === 'number' ? `&codigo_tipo_unidade=${tipoUnidade}` : '';
-    const url = `https://apidadosabertos.saude.gov.br/cnes/estabelecimentos?codigo_municipio=${ibge6}&status=1${tipoParam}&limit=${limit}&offset=0`;
+    const url = `https://apidadosabertos.saude.gov.br/cnes/estabelecimentos?codigo_municipio=${ibge6}&status=1${tipoParam}&limit=20&offset=${offset}`;
     const res = await fetch(url, { signal: ctrl.signal });
     if (!res.ok) return [];
     const data = (await res.json()) as { estabelecimentos?: CnesRawEstabelecimento[] };
@@ -152,6 +164,12 @@ async function fetchCnesBatch(ibge6: string, tipoUnidade?: number, limit = 100):
   }
 }
 
+const EXCLUDED_NAT3_PRIVATE_CHAIN_RE =
+  /\b(cassems|einstein|s[ií]rio[- ]liban[eê]s|oswaldo cruz|moinhos de vento|divina provid[eê]ncia|s[aã]o lucas|ordem terceira|benefic[eê]ncia portuguesa|m[aã]e de deus|evang[eé]lico|adventista|israelita|samaritano|portugu[eê]s|real portugu[eê]s|banco de olhos|marcelino champagnat|s[aã]o camilo)\b/i;
+
+const ALLOWED_NAT3_PUBLIC_NAME_RE =
+  /\b(santa casa|maternidade|sus\b|hospital municipal|hospital estadual|hospital federal|hospital distrital|hospital regional|hospital p[uú]blico|hospital universit[aá]rio|filantr[oó]pic|ubs\b|usf\b|ama\b|upa\b|caps\b|cl[ií]nica da fam[ií]lia|centro de sa[uú]de|posto de sa[uú]de|unidade b[aá]sica|unidade de sa[uú]de|pronto atendimento)\b/i;
+
 function isStrictFreePublicCnes(e: CnesRawEstabelecimento): boolean {
   if (e.codigo_motivo_desabilitacao_estabelecimento) return false;
   const tipo = Number(e.codigo_tipo_unidade);
@@ -159,7 +177,15 @@ function isStrictFreePublicCnes(e: CnesRawEstabelecimento): boolean {
 
   const lat = Number(e.latitude_estabelecimento_decimo_grau);
   const lng = Number(e.longitude_estabelecimento_decimo_grau);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) < 0.1 || Math.abs(lng) < 0.1) {
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001) ||
+    lat < -35 ||
+    lat > 7 ||
+    lng < -75 ||
+    lng > -30
+  ) {
     return false;
   }
 
@@ -172,21 +198,174 @@ function isStrictFreePublicCnes(e: CnesRawEstabelecimento): boolean {
 
   if (natJur.startsWith('1')) {
     if ((tipo === 4 || tipo === 7) && !susAmb && !hosp) {
-      return false;
+      return /\b(maternidade|mulher|policl[ií]nica|pronto|sa[uú]de)\b/i.test(nome);
     }
     return true;
   }
 
-  if (natJur.startsWith('3')) {
-    return (
-      (susAmb || hosp) &&
-      /\b(santa casa|maternidade|sus|hospital municipal|hospital estadual|hospital universit[aá]rio|filantr[oó]pic)\b/i.test(
-        nome
-      )
+  // Federal university/public SUS hospitals organized as Empresa Pública (2011 - EBSERH / GHC)
+  if (natJur.startsWith('2011') && (susAmb || hosp)) {
+    return /\b(universit[aá]ri[oa]|ebserh|hospital escola|maternidade escola|cl[ií]nicas|f[eê]mina|conceic[aã]o|cristo redentor)\b/i.test(
+      nome
     );
   }
 
+  if (natJur.startsWith('3')) {
+    if (EXCLUDED_NAT3_PRIVATE_CHAIN_RE.test(nome)) return false;
+    return (susAmb || hosp) && ALLOWED_NAT3_PUBLIC_NAME_RE.test(nome);
+  }
+
   return false;
+}
+
+export interface NormalizedCnesUnit {
+  cnes: string;
+  name: string;
+  tipo: number;
+  isPublicEntity: boolean;
+  street: string;
+  bairro: string;
+  cep?: string;
+  phone?: string;
+  hours?: string;
+  lat: number;
+  lng: number;
+}
+
+const CNES_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const cnesMunicipalityCache = new Map<string, { ts: number; units: NormalizedCnesUnit[] }>();
+const inFlightCnesByIbge = new Map<string, Promise<NormalizedCnesUnit[]>>();
+
+async function loadMunicipalityFreePublicUnits(ibge6: string): Promise<NormalizedCnesUnit[]> {
+  const cached = cnesMunicipalityCache.get(ibge6);
+  if (cached && Date.now() - cached.ts < CNES_CACHE_TTL_MS) {
+    return cached.units;
+  }
+
+  const existingPromise = inFlightCnesByIbge.get(ibge6);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const task = (async (): Promise<NormalizedCnesUnit[]> => {
+    const startMs = Date.now();
+    // Wave 1: Query all primary free public establishment types + general catch-all in parallel.
+    // Note: In DATASUS CNES Open Data API, `offset` is a 0-indexed PAGE NUMBER (20 rows/page).
+    const [all0, t1_0, t2_0, t4_0, t5_0, t7_0, t15_0, t61_0, t70_0, t73_0] = await Promise.all([
+      fetchCnesBatch(ibge6, undefined, 0),
+      fetchCnesBatch(ibge6, 1, 0),
+      fetchCnesBatch(ibge6, 2, 0),
+      fetchCnesBatch(ibge6, 4, 0),
+      fetchCnesBatch(ibge6, 5, 0),
+      fetchCnesBatch(ibge6, 7, 0),
+      fetchCnesBatch(ibge6, 15, 0),
+      fetchCnesBatch(ibge6, 61, 0),
+      fetchCnesBatch(ibge6, 70, 0),
+      fetchCnesBatch(ibge6, 73, 0),
+    ]);
+
+    const allRows: CnesRawEstabelecimento[] = [
+      ...all0,
+      ...t1_0,
+      ...t2_0,
+      ...t4_0,
+      ...t5_0,
+      ...t7_0,
+      ...t15_0,
+      ...t61_0,
+      ...t70_0,
+      ...t73_0,
+    ];
+
+    // Wave 2: Only paginate types whose page 0 was full (20 items), respecting a 5.8s soft deadline.
+    const extraTasks: Array<{ tipo: number; page: number }> = [];
+    if (t5_0.length >= 20) extraTasks.push({ tipo: 5, page: 1 }, { tipo: 5, page: 2 });
+    if (t7_0.length >= 20) extraTasks.push({ tipo: 7, page: 1 });
+    if (t70_0.length >= 20) extraTasks.push({ tipo: 70, page: 1 }, { tipo: 70, page: 2 });
+    if (t73_0.length >= 20) extraTasks.push({ tipo: 73, page: 1 }, { tipo: 73, page: 2 });
+    if (t1_0.length >= 20) extraTasks.push({ tipo: 1, page: 1 });
+
+    if (extraTasks.length > 0 && Date.now() - startMs < 5500) {
+      const extraRes = await Promise.all(
+        extraTasks.map((t) => fetchCnesBatch(ibge6, t.tipo, t.page))
+      );
+      allRows.push(...extraRes.flat());
+    }
+
+    // For large cities with > 20 UBS/USF/AMA units, fetch pages 1..28 in chunks of 10 until a short page is reached.
+    if (t2_0.length >= 20) {
+      for (let start = 1; start <= 28; start += 10) {
+        if (Date.now() - startMs > 5800) break;
+        const pages = Array.from(
+          { length: Math.min(10, 29 - start) },
+          (_, idx) => start + idx
+        );
+        const batchRes = await Promise.all(pages.map((p) => fetchCnesBatch(ibge6, 2, p)));
+        allRows.push(...batchRes.flat());
+        if (batchRes.some((arr) => arr.length < 20)) break;
+      }
+    }
+
+    const deduped = new Map<number, CnesRawEstabelecimento>();
+    for (const row of allRows) {
+      const code = Number(row.codigo_cnes);
+      if (!Number.isFinite(code) || deduped.has(code)) continue;
+      if (!isStrictFreePublicCnes(row)) continue;
+      deduped.set(code, row);
+    }
+
+    const units: NormalizedCnesUnit[] = Array.from(deduped.values()).map((e) => {
+      const lat = Number(e.latitude_estabelecimento_decimo_grau);
+      const lng = Number(e.longitude_estabelecimento_decimo_grau);
+      const tipo = Number(e.codigo_tipo_unidade);
+      const rawName = (e.nome_fantasia || e.nome_razao_social || '').trim();
+      const street = e.endereco_estabelecimento ? formatPtTitleCase(e.endereco_estabelecimento) : '';
+      const num =
+        e.numero_estabelecimento && e.numero_estabelecimento !== 'S/N'
+          ? `, ${e.numero_estabelecimento}`
+          : '';
+      const bairro = e.bairro_estabelecimento ? formatPtTitleCase(e.bairro_estabelecimento) : '';
+      const rawCep = String(e.codigo_cep_estabelecimento || '').replace(/\D/g, '');
+      const cep = rawCep.length === 8 ? `${rawCep.slice(0, 5)}-${rawCep.slice(5)}` : undefined;
+      const natJur = String(e.descricao_natureza_juridica_estabelecimento || '').trim();
+
+      return {
+        cnes: String(e.codigo_cnes),
+        name: formatPtTitleCase(rawName),
+        tipo,
+        isPublicEntity: natJur.startsWith('1'),
+        street: street ? `${street}${num}` : '',
+        bairro,
+        cep,
+        phone: (e.numero_telefone_estabelecimento || '').trim() || undefined,
+        hours: e.descricao_turno_atendimento
+          ? formatPtTitleCase(e.descricao_turno_atendimento)
+          : undefined,
+        lat,
+        lng,
+      };
+    });
+
+    // Only cache non-empty results or genuine tiny-city scans so transient network errors don't stick
+    if (units.length > 0 || all0.length < 20) {
+      cnesMunicipalityCache.set(ibge6, { ts: Date.now(), units });
+    }
+    return units;
+  })();
+
+  inFlightCnesByIbge.set(ibge6, task);
+  try {
+    return await task;
+  } finally {
+    inFlightCnesByIbge.delete(ibge6);
+  }
+}
+
+function getDiversityBucket(tipo: number): 'ubs' | 'caps' | 'hosp' | 'upa' {
+  if (tipo === 70 || tipo === 71) return 'caps';
+  if (tipo === 73 || tipo === 20) return 'upa';
+  if (tipo === 5 || tipo === 7 || tipo === 61 || tipo === 15) return 'hosp';
+  return 'ubs';
 }
 
 export default async function handler(req: any, res: any) {
@@ -211,62 +390,51 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const initialBatch = await fetchCnesBatch(ibge6, undefined, 100);
-  const allRows: CnesRawEstabelecimento[] = [...initialBatch];
-
-  // Larger municipalities (>100 CNES records) also query core free SUS unit types explicitly
-  if (initialBatch.length >= 100) {
-    const [ubsRows, capsRows, hospRows, upaRows, partoRows] = await Promise.all([
-      fetchCnesBatch(ibge6, 2, 100),
-      fetchCnesBatch(ibge6, 70, 50),
-      fetchCnesBatch(ibge6, 5, 50),
-      fetchCnesBatch(ibge6, 73, 30),
-      fetchCnesBatch(ibge6, 61, 20),
-    ]);
-    allRows.push(...ubsRows, ...capsRows, ...hospRows, ...upaRows, ...partoRows);
-  }
-
-  const deduped = new Map<number, CnesRawEstabelecimento>();
-  for (const row of allRows) {
-    const code = Number(row.codigo_cnes);
-    if (!Number.isFinite(code) || deduped.has(code)) continue;
-    if (!isStrictFreePublicCnes(row)) continue;
-    deduped.set(code, row);
-  }
-
+  const allUnits = await loadMunicipalityFreePublicUnits(ibge6);
   const hasUserCoords = Number.isFinite(userLat) && Number.isFinite(userLng);
 
-  const units = Array.from(deduped.values())
-    .map((e) => {
-      const lat = Number(e.latitude_estabelecimento_decimo_grau);
-      const lng = Number(e.longitude_estabelecimento_decimo_grau);
-      const distanceKm = hasUserCoords ? haversineKm(userLat, userLng, lat, lng) : 0;
-      const tipo = Number(e.codigo_tipo_unidade);
-      const rawName = (e.nome_fantasia || e.nome_razao_social || '').trim();
-      const street = e.endereco_estabelecimento ? formatPtTitleCase(e.endereco_estabelecimento) : '';
-      const num = e.numero_estabelecimento && e.numero_estabelecimento !== 'S/N' ? `, ${e.numero_estabelecimento}` : '';
-      const bairro = e.bairro_estabelecimento ? formatPtTitleCase(e.bairro_estabelecimento) : '';
-      const rawCep = String(e.codigo_cep_estabelecimento || '').replace(/\D/g, '');
-      const cep = rawCep.length === 8 ? `${rawCep.slice(0, 5)}-${rawCep.slice(5)}` : undefined;
-
-      return {
-        cnes: String(e.codigo_cnes),
-        name: formatPtTitleCase(rawName),
-        tipo,
-        street: street ? `${street}${num}` : '',
-        bairro,
-        cep,
-        phone: (e.numero_telefone_estabelecimento || '').trim() || undefined,
-        hours: e.descricao_turno_atendimento ? formatPtTitleCase(e.descricao_turno_atendimento) : undefined,
-        lat,
-        lng,
-        distanceKm,
-      };
-    })
+  const withinRadius = allUnits
+    .map((u) => ({
+      ...u,
+      distanceKm: hasUserCoords ? haversineKm(userLat, userLng, u.lat, u.lng) : 0,
+    }))
     .filter((u) => !hasUserCoords || u.distanceKm <= 30)
-    .sort((a, b) => a.distanceKm - b.distanceKm)
-    .slice(0, 35);
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+
+  // Reserve top slots across UBS/Posto, CAPS, Hospitals/Maternidades, and UPAs so one category never crowds out others.
+  const selected: typeof withinRadius = [];
+  const selectedIds = new Set<string>();
+  const bucketQuotas: Record<'ubs' | 'caps' | 'hosp' | 'upa', number> = {
+    ubs: 10,
+    hosp: 6,
+    caps: 5,
+    upa: 4,
+  };
+  const bucketCounts: Record<'ubs' | 'caps' | 'hosp' | 'upa', number> = {
+    ubs: 0,
+    hosp: 0,
+    caps: 0,
+    upa: 0,
+  };
+
+  for (const unit of withinRadius) {
+    const bucket = getDiversityBucket(unit.tipo);
+    if (bucketCounts[bucket] < bucketQuotas[bucket]) {
+      selected.push(unit);
+      selectedIds.add(unit.cnes);
+      bucketCounts[bucket]++;
+    }
+  }
+
+  for (const unit of withinRadius) {
+    if (selected.length >= 50) break;
+    if (selectedIds.has(unit.cnes)) continue;
+    selected.push(unit);
+    selectedIds.add(unit.cnes);
+  }
+
+  selected.sort((a, b) => a.distanceKm - b.distanceKm);
 
   res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
-  res.status(200).json({ units });
+  res.status(200).json({ units: selected });
 }

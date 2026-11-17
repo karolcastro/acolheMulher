@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AppSection, CepInfo } from '../types';
+import { useCatalog } from '../context/CatalogContext';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { formatCep, resolveLocationQuery } from '../utils/voiceSearchParser';
 import { Search, MapPin, Mic, Square, RefreshCw, AlertCircle } from 'lucide-react';
@@ -28,6 +29,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
   onSearchResult,
   onCancel,
 }) => {
+  const { syncCatalogForLocation } = useCatalog();
   const [queryInput, setQueryInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -44,6 +46,11 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
     setErrorMessage(null);
 
     const result = await resolveLocationQuery(trimmed);
+
+    if (result.cepInfo) {
+      await syncCatalogForLocation(result.cepInfo);
+    }
+
     setLoading(false);
 
     if (result.formattedInput) {

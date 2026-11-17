@@ -412,6 +412,49 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
           return 0;
         });
 
+    const pickDiversePreview = (list: RankedServiceItem[], limit = 18): RankedServiceItem[] => {
+      if (list.length <= limit) return list;
+      const selected: RankedServiceItem[] = [];
+      const used = new Set<string>();
+      const counts: Record<string, number> = {};
+      const getBucket = (r: RankedServiceItem): string => {
+        const s = `${r.service.subcategory} ${r.service.name}`.toLowerCase();
+        if (r.distanceKm === null) return 'phone';
+        if (s.includes('delegacia') || s.includes('deam') || r.service.category === 'emergencia') return 'emergencia';
+        if (s.includes('caps') || r.service.category === 'psicologico') return 'caps';
+        if (s.includes('upa') || s.includes('hospital') || s.includes('maternidade') || s.includes('parto')) return 'hospital';
+        if (s.includes('defensoria') || s.includes('creas') || s.includes('cras') || s.includes('casa da mulher')) return 'suas';
+        return 'ubs';
+      };
+      const caps: Record<string, number> = {
+        phone: 3,
+        ubs: 5,
+        hospital: 4,
+        caps: 4,
+        emergencia: 4,
+        suas: 3,
+      };
+      for (const r of list) {
+        const b = getBucket(r);
+        if ((counts[b] || 0) < (caps[b] ?? 3)) {
+          selected.push(r);
+          used.add(r.service.id);
+          counts[b] = (counts[b] || 0) + 1;
+        }
+      }
+      for (const r of list) {
+        if (selected.length >= limit) break;
+        if (used.has(r.service.id)) continue;
+        selected.push(r);
+        used.add(r.service.id);
+      }
+      return selected.sort((a, b) => {
+        const idxA = list.indexOf(a);
+        const idxB = list.indexOf(b);
+        return idxA - idxB;
+      });
+    };
+
     if (showAllNearby && !activeCategoryKey) {
       const mergedAll = mergeUnique(
         [...regionalServices, ...nationalServices],
@@ -421,13 +464,13 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       const onlineFirst = rankedAll.filter((r) => isFreeOnlineOffer(r.service));
       const allLocal = rankedAll.filter((r) => !isFreeOnlineOffer(r.service));
       const closeCount = allLocal.filter(
-        (r) => r.distanceKm !== null && r.distanceKm <= 10
+        (r) => r.distanceKm !== null && r.distanceKm <= 15
       ).length;
-      const localAndPhone = (
-        closeCount >= 4
-          ? allLocal.filter((r) => r.distanceKm === null || r.distanceKm <= 12)
-          : allLocal
-      ).slice(0, 14);
+      const scopedLocal =
+        closeCount >= 8
+          ? allLocal.filter((r) => r.distanceKm === null || r.distanceKm <= 20)
+          : allLocal;
+      const localAndPhone = pickDiversePreview(scopedLocal, 18);
       const allMatchingNgos = sortByUf(ngos).slice(0, 6);
 
       return {
@@ -464,7 +507,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       };
     }
 
-    const relevantDynamicUnits = nearbySusUnits.filter((u) => {
+    const categoryDynamicUnits = nearbySusUnits.filter((u) => {
       if (u.category === 'social') return true;
       const text = `${u.subcategory} ${u.name} ${(u.tags || []).join(' ')}`.toLowerCase();
       if (activeCategoryKey === 'saude') {
@@ -484,8 +527,11 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
         return (
           u.category === 'emergencia' ||
           u.accessMode === 'Plantão 24h' ||
+          text.includes('delegacia') ||
+          text.includes('policia') ||
           text.includes('casa da mulher') ||
-          text.includes('creas')
+          text.includes('creas') ||
+          text.includes('cras')
         );
       }
       if (activeCategoryKey === 'juridico') {
@@ -496,6 +542,13 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       }
       return true;
     });
+
+    // Small/interior municipalities may not have specialized DEAMs or Defensoria mapped;
+    // surface the nearest verified municipal public units (<= 30 km) instead of showing zero local places.
+    const relevantDynamicUnits =
+      categoryDynamicUnits.length > 0
+        ? categoryDynamicUnits
+        : nearbySusUnits.slice(0, 6);
 
     const matchingRegional = regionalServices.filter((s) => {
       if (s.category === activeCategoryKey) return true;
@@ -528,15 +581,15 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     const onlineFirst = ranked.filter((r) => isFreeOnlineOffer(r.service));
     const allLocalAndPhone = ranked.filter((r) => !isFreeOnlineOffer(r.service));
     const closePhysicalCount = allLocalAndPhone.filter(
-      (r) => r.distanceKm !== null && r.distanceKm <= 10
+      (r) => r.distanceKm !== null && r.distanceKm <= 15
     ).length;
-    const localAndPhone = (
-      closePhysicalCount >= 4
+    const scopedLocalAndPhone =
+      closePhysicalCount >= 8
         ? allLocalAndPhone.filter(
-            (r) => r.distanceKm === null || r.distanceKm <= 12
+            (r) => r.distanceKm === null || r.distanceKm <= 20
           )
-        : allLocalAndPhone
-    ).slice(0, 14);
+        : allLocalAndPhone;
+    const localAndPhone = pickDiversePreview(scopedLocalAndPhone, 18);
 
     const matchedCategoryNgos = sortByUf(
       ngos.filter((ngo) =>

@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Search, MapPin, Sparkles, Filter, AlertCircle, RefreshCw, PhoneCall, ShieldAlert, BookOpen } from 'lucide-react';
-import { ServiceCategory, ServiceItem, CepInfo } from '../types';
-import { NATIONAL_SERVICES, REGIONAL_SERVICES, CATEGORIES_CONFIG, SAMPLE_CEPS } from '../data/servicesData';
+import React, { useState } from 'react';
+import { Search, MapPin, AlertCircle, RefreshCw, ShieldAlert, BookOpen } from 'lucide-react';
+import { ServiceCategory, CepInfo } from '../types';
+import { CATEGORIES_CONFIG, SAMPLE_CEPS } from '../data/servicesData';
+import { useCatalog } from '../context/CatalogContext';
+import { fetchNormalizedCepLocation, formatCep, normalizeAsciiKey, validateBrazilianCep } from '../utils/cepSearchService';
+import { sortServicesByCepProximity } from '../utils/cepProximity';
 import { ServiceCard } from './ServiceCard';
 
 interface SearchSectionProps {
@@ -9,6 +12,7 @@ interface SearchSectionProps {
 }
 
 export const SearchSection: React.FC<SearchSectionProps> = ({ onGoToResearch }) => {
+  const { nationalServices, regionalServices, syncCatalogForLocation } = useCatalog();
   const [cepInput, setCepInput] = useState('');
   const [loadingCep, setLoadingCep] = useState(false);
   const [cepError, setCepError] = useState<string | null>(null);
@@ -18,20 +22,16 @@ export const SearchSection: React.FC<SearchSectionProps> = ({ onGoToResearch }) 
 
   // Format CEP as user types (00000-000)
   const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length > 8) value = value.slice(0, 8);
-    if (value.length > 5) {
-      value = `${value.slice(0, 5)}-${value.slice(5)}`;
-    }
-    setCepInput(value);
+    setCepInput(formatCep(e.target.value));
     setCepError(null);
   };
 
-  // Fetch CEP from ViaCEP API
+  // Validate CEP, normalize location via ViaCEP + BrasilAPI v2, and query Supabase
   const handleSearchCep = async (cepToSearch?: string) => {
-    const target = (cepToSearch || cepInput).replace(/\D/g, '');
-    if (target.length !== 8) {
-      setCepError('Por favor, digite um CEP válido com 8 dígitos.');
+    const raw = cepToSearch || cepInput;
+    const validation = validateBrazilianCep(raw);
+    if (!validation.isValid) {
+      setCepError(validation.error || 'Por favor, digite um CEP válido com 8 dígitos.');
       return;
     }
 
@@ -39,25 +39,18 @@ export const SearchSection: React.FC<SearchSectionProps> = ({ onGoToResearch }) 
     setCepError(null);
 
     try {
-      const response = await fetch(`https://viacep.com.br/ws/${target}/json/`);
-      const data = await response.json();
-
-      if (data.erro) {
-        setCepError('CEP não encontrado na base dos Correios. Tente outro CEP ou use um dos exemplos abaixo.');
-        setLoadingCep(false);
+      const result = await fetchNormalizedCepLocation(validation.digits);
+      if (!result.cepInfo) {
+        setCepError(
+          result.error || 'CEP não encontrado na base dos Correios. Tente outro CEP ou use um dos exemplos abaixo.'
+        );
         return;
       }
 
-      setCurrentLocation({
-        cep: data.cep,
-        logradouro: data.logradouro,
-        bairro: data.bairro,
-        localidade: data.localidade,
-        uf: data.uf,
-        ddd: data.ddd
-      });
+      await syncCatalogForLocation(result.cepInfo);
+      setCurrentLocation(result.cepInfo);
     } catch {
-      setCepError('Não foi possível consultar os Correios no momento. Exibindo rede nacional de apoio.');
+      setCepError('Não foi possível consultar o CEP no momento. Exibindo rede nacional de apoio.');
     } finally {
       setLoadingCep(false);
     }
@@ -65,7 +58,7 @@ export const SearchSection: React.FC<SearchSectionProps> = ({ onGoToResearch }) 
 
   const selectSampleCep = (sampleCep: string) => {
     setCepInput(sampleCep);
-    handleSearchCep(sampleCep);
+    void handleSearchCep(sampleCep);
   };
 
   const clearLocation = () => {
@@ -74,50 +67,27 @@ export const SearchSection: React.FC<SearchSectionProps> = ({ onGoToResearch }) 
     setCepError(null);
   };
 
-  // Filter logic:
-  // 1. National services are ALWAYS included.
-  // 2. If a location is detected, filter regional services that match UF or City.
-  // 3. Filter by category.
-  // 4. Filter by text query.
-  const filteredServices: ServiceItem[] = React.useMemo(() => {
-    let all: ServiceItem[] = [...NATIONAL_SERVICES];
+  const filteredServices = React.useMemo(() => {
+    const combined = [...regionalServices, ...nationalServices];
+    const ranked = sortServicesByCepProximity(combined, currentLocation).map((r) => r.service);
 
-    if (currentLocation) {
-      const matchingRegional = REGIONAL_SERVICES.filter(item => {
-        if (!item.state) return false;
-        const matchesUF = item.state.toUpperCase() === currentLocation.uf.toUpperCase();
-        const matchesCity = item.city && currentLocation.localidade
-          ? item.city.toLowerCase().includes(currentLocation.localidade.toLowerCase())
-          : false;
-        return matchesUF || matchesCity;
-      });
+    let result = ranked;
 
-      // Show regional services first, followed by national services
-      all = [...matchingRegional, ...NATIONAL_SERVICES];
-    } else {
-      // If no CEP is entered yet, show all sample regional services + national
-      all = [...REGIONAL_SERVICES, ...NATIONAL_SERVICES];
-    }
-
-    // Filter by Category
     if (selectedCategory !== 'todos') {
-      all = all.filter(s => s.category === selectedCategory);
+      result = result.filter((s) => s.category === selectedCategory);
     }
 
-    // Filter by Search Query
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      all = all.filter(s => 
-        s.name.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q) ||
-        s.subcategory.toLowerCase().includes(q) ||
-        (s.tags && s.tags.some(t => t.toLowerCase().includes(q))) ||
-        (s.city && s.city.toLowerCase().includes(q))
+      const q = normalizeAsciiKey(searchQuery);
+      result = result.filter((s) =>
+        normalizeAsciiKey(
+          `${s.name} ${s.description} ${s.subcategory} ${(s.tags || []).join(' ')} ${s.city || ''}`
+        ).includes(q)
       );
     }
 
-    return all;
-  }, [currentLocation, selectedCategory, searchQuery]);
+    return result;
+  }, [nationalServices, regionalServices, currentLocation, selectedCategory, searchQuery]);
 
   return (
     <div className="space-y-10">

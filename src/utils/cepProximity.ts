@@ -375,13 +375,34 @@ export function sortServicesByCepProximity(
     }));
   }
 
-  const userCoords =
+  const userCepNum = getNumericCep(location.cep);
+  const userUf = location.uf?.trim().toUpperCase();
+  const normLocationCity = normalizeSimpleCity(location.localidade);
+
+  let userCoords =
     typeof location.lat === 'number' && typeof location.lng === 'number'
       ? { lat: location.lat, lng: location.lng }
       : estimateCoordinatesForCepAndCity(location.cep, location.localidade, location.uf);
 
-  const userCepNum = getNumericCep(location.cep);
-  const userUf = location.uf?.trim().toUpperCase();
+  if (!userCoords && userUf) {
+    const cityUnitsWithCoords = services.filter(
+      (s) =>
+        !s.isNationalOnline &&
+        s.state?.trim().toUpperCase() === userUf &&
+        typeof s.lat === 'number' &&
+        typeof s.lng === 'number' &&
+        (!normLocationCity || normalizeSimpleCity(s.city) === normLocationCity)
+    );
+    if (cityUnitsWithCoords.length > 0) {
+      const avgLat =
+        cityUnitsWithCoords.reduce((acc, s) => acc + (s.lat as number), 0) /
+        cityUnitsWithCoords.length;
+      const avgLng =
+        cityUnitsWithCoords.reduce((acc, s) => acc + (s.lng as number), 0) /
+        cityUnitsWithCoords.length;
+      userCoords = { lat: avgLat, lng: avgLng };
+    }
+  }
 
   type Enriched = {
     service: ServiceItem;
@@ -443,6 +464,43 @@ export function sortServicesByCepProximity(
         : estimateCoordinatesForCepAndCity(service.cep, service.city, service.state);
 
     if (!userCoords || !serviceCoords) {
+      if (typeof service.distanceKmHint === 'number' && Number.isFinite(service.distanceKmHint)) {
+        if (service.distanceKmHint <= MAX_PROXIMITY_KM) {
+          const serviceCepNum = getNumericCep(service.cep);
+          const cepDiff =
+            userCepNum !== null && serviceCepNum !== null
+              ? Math.abs(userCepNum - serviceCepNum)
+              : Number.MAX_SAFE_INTEGER;
+          enriched.push({
+            service,
+            distanceKm: service.distanceKmHint,
+            distanceLabel: formatDistanceLabel(service.distanceKmHint),
+            isNearbyLocal: true,
+            tier: 2,
+            cepDiff,
+          });
+        }
+        continue;
+      }
+
+      const sameCityMatch =
+        Boolean(normLocationCity) &&
+        normalizeSimpleCity(service.city) === normLocationCity;
+      if (sameCityMatch) {
+        const serviceCepNum = getNumericCep(service.cep);
+        const cepDiff =
+          userCepNum !== null && serviceCepNum !== null
+            ? Math.abs(userCepNum - serviceCepNum)
+            : Number.MAX_SAFE_INTEGER;
+        enriched.push({
+          service,
+          distanceKm: 0,
+          distanceLabel: `Em ${location.localidade} - ${serviceUf}`,
+          isNearbyLocal: true,
+          tier: 2,
+          cepDiff,
+        });
+      }
       continue;
     }
 

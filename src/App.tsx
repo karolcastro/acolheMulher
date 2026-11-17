@@ -7,18 +7,25 @@ import { PwaShowcase } from './components/PwaShowcase';
 import { NgoPartnerArea } from './components/NgoPartnerArea';
 import { CamouflageView } from './components/CamouflageView';
 import { OfflineAccessModal } from './components/OfflineAccessModal';
-import { CatalogProvider } from './context/CatalogContext';
+import { CatalogProvider, useCatalog } from './context/CatalogContext';
 import { useOnlineStatus } from './hooks/usePWAInstall';
 import { WifiOff, Mail, Github, Heart, ExternalLink } from 'lucide-react';
 import { AppSection, CepInfo } from './types';
 import { recordAnonymousSearchDemand } from './utils/demandAnalytics';
 
 function AppContent() {
+  const { syncCatalogForLocation } = useCatalog();
   const [activeSection, setActiveSection] = useState<AppSection>('inicio');
   const [currentLocation, setCurrentLocation] = useState<CepInfo | null>(null);
   const [isCamouflaged, setIsCamouflaged] = useState(false);
   const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
   const isOnline = useOnlineStatus();
+
+  useEffect(() => {
+    if (currentLocation) {
+      void syncCatalogForLocation(currentLocation);
+    }
+  }, [currentLocation, syncCatalogForLocation]);
 
   const handleNavSectionChange = (section: AppSection) => {
     setActiveSection(section);

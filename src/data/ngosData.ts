@@ -100,6 +100,48 @@ export const SUPPORT_NGOS: NgoItem[] = [
     relatedCategories: ['juridico', 'psicologico', 'emergencia', 'saude']
   },
   {
+    id: 'ngo-casa-tina-martins-mg',
+    name: 'Casa de Referência da Mulher Tina Martins (MG)',
+    organization: 'Movimento de Mulheres Olga Benario · Rede Tina Martins',
+    featured: true,
+    area: 'acolhimento_protecao',
+    areaLabel: 'Acolhimento, Proteção & Orientação (MG)',
+    coverage: 'Minas Gerais (Sede em Belo Horizonte - MG e rede estadual)',
+    state: 'MG',
+    city: 'Belo Horizonte',
+    accessChannel: 'Acolhimento presencial em MG e orientação gratuita pelos canais oficiais',
+    summary: 'Casa de referência e acolhimento gerida por mulheres em Minas Gerais que oferece escuta, apoio psicológico, orientação jurídica e encaminhamento para proteção e autonomia de mulheres em situação de violência.',
+    howTheyHelp: [
+      'Acolhimento humanizado, escuta qualificada e orientação de proteção',
+      'Encaminhamento para rede jurídica, psicológica e abrigamento em Minas Gerais',
+      'Articulação com coletivos e movimentos de mulheres no interior e na capital'
+    ],
+    websiteUrl: 'https://casatinamartins.com',
+    privacyNote: 'Espaço solidário e gratuito voltado à proteção e autonomia das mulheres em MG.',
+    relatedCategories: ['emergencia', 'psicologico', 'juridico']
+  },
+  {
+    id: 'ngo-mulheres-das-gerais-mg',
+    name: 'Consórcio Mulheres das Gerais (MG)',
+    organization: 'Rede de Organizações de Mulheres de Minas Gerais',
+    featured: false,
+    area: 'acolhimento_protecao',
+    areaLabel: 'Direitos, Prevenção & Proteção (MG)',
+    coverage: 'Minas Gerais (Interior e Capital · Rede Estadual)',
+    state: 'MG',
+    city: 'Todo o Estado de Minas Gerais',
+    accessChannel: 'Articulação estadual e materiais gratuitos de orientação',
+    summary: 'Consórcio de organizações e coletivos feministas de Minas Gerais focado no enfrentamento à violência contra a mulher, fortalecimento de redes no interior mineiro e orientação de acesso a direitos.',
+    howTheyHelp: [
+      'Conexão com coletivos e organizações de mulheres em diversas regiões de Minas Gerais',
+      'Orientação gratuita sobre direitos, Lei Maria da Penha e serviços municipais',
+      'Campanhas e ações de prevenção à violência doméstica e institucional'
+    ],
+    websiteUrl: 'https://mulheresdasgerais.com.br',
+    privacyNote: 'Atuação em rede gratuita sem fins lucrativos em Minas Gerais.',
+    relatedCategories: ['emergencia', 'psicologico', 'juridico']
+  },
+  {
     id: 'ngo-odara-ba',
     name: 'Odara — Instituto da Mulher Negra (Salvador e Chapada Diamantina)',
     organization: 'Instituto Odara · Rede de Mulheres na Bahia',
@@ -119,6 +161,27 @@ export const SUPPORT_NGOS: NgoItem[] = [
     websiteUrl: 'https://institutoodara.org.br',
     privacyNote: 'Atuação social sem fins lucrativos voltada ao fortalecimento de mulheres negras, periféricas e rurais.',
     relatedCategories: ['saude', 'psicologico', 'juridico', 'emergencia', 'cursos']
+  },
+  {
+    id: 'ngo-mae-andresa-ma',
+    name: 'Grupo de Mulheres Negras Mãe Andresa (São Luís - MA)',
+    organization: 'GMNMA · ONG Feminista e Antirracista do Maranhão',
+    featured: true,
+    area: 'acolhimento_protecao',
+    areaLabel: 'Acolhimento, Saúde & Direitos (MA)',
+    coverage: 'São Luís - MA e Rede Estadual do Maranhão',
+    state: 'MA',
+    city: 'São Luís',
+    accessChannel: 'Atendimento comunitário em São Luís e canais oficiais (@grupomaeandresa)',
+    summary: 'Histórica organização de mulheres sediada em São Luís do Maranhão que atua no acolhimento comunitário, saúde integral da mulher, defesa de direitos, educação e enfrentamento às violências.',
+    howTheyHelp: [
+      'Acolhimento, escuta solidária e fortalecimento comunitário para mulheres em São Luís e no Maranhão',
+      'Orientação gratuita sobre direitos, saúde integral e acesso à rede de proteção',
+      'Articulação com a Rede de Mulheres Negras do Nordeste e projetos educativos gratuitos'
+    ],
+    websiteUrl: 'https://www.instagram.com/grupomaeandresa',
+    privacyNote: 'Organização sem fins lucrativos atuante desde 1986 em defesa das mulheres no Maranhão.',
+    relatedCategories: ['psicologico', 'saude', 'emergencia', 'juridico', 'cursos']
   },
   {
     id: 'ngo-tamojuntas',

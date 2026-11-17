@@ -1,5 +1,13 @@
 import { AppSection, CepInfo } from '../types';
 import { estimateCoordinatesForCepAndCity } from './cepProximity';
+import {
+  fetchNormalizedCepLocation,
+  formatCep as formatCepService,
+  geocodeBrazilPlace,
+  isLikelyNumericCepInput,
+  normalizeBrazilianLocation,
+  validateBrazilianCep,
+} from './cepSearchService';
 
 const WORD_TO_DIGIT: Record<string, string> = {
   zero: '0',
@@ -132,11 +140,7 @@ export function normalizeText(text: string): string {
 }
 
 export function formatCep(digits: string): string {
-  const clean = digits.replace(/\D/g, '').slice(0, 8);
-  if (clean.length > 5) {
-    return `${clean.slice(0, 5)}-${clean.slice(5)}`;
-  }
-  return clean;
+  return formatCepService(digits);
 }
 
 /**
@@ -251,173 +255,42 @@ export interface LocationResolutionResult {
   error?: string;
 }
 
-async function geocodeBrazilPlace(query: string): Promise<{ lat: number; lng: number } | null> {
-  if (typeof window === 'undefined') return null;
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 2200);
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=1&q=${encodeURIComponent(
-        query
-      )}`,
-      { signal: controller.signal }
-    );
-    if (!res.ok) return null;
-    const arr = (await res.json()) as Array<{ lat?: string; lon?: string }>;
-    const lat = Number(arr[0]?.lat);
-    const lng = Number(arr[0]?.lon);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      return { lat, lng };
-    }
-    return null;
-  } catch {
-    return null;
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-}
-
-function parseValidCoord(raw: unknown): number | undefined {
-  if (raw === null || raw === undefined || raw === '') return undefined;
-  const num = Number(raw);
-  if (!Number.isFinite(num) || Math.abs(num) < 0.01) return undefined;
-  return num;
-}
-
-async function geocodeCepAddress(
-  street: string,
-  neighborhood: string,
-  city: string,
-  uf: string
-): Promise<{ lat: number; lng: number } | null> {
-  if (!city || !uf) return null;
-
-  if (street) {
-    const byStreet = await geocodeBrazilPlace(`${street}, ${city}, ${uf}, Brasil`);
-    if (byStreet) return byStreet;
-  }
-
-  if (neighborhood) {
-    const byBairro = await geocodeBrazilPlace(`${neighborhood}, ${city}, ${uf}, Brasil`);
-    if (byBairro) return byBairro;
-  }
-
-  return null;
-}
-
 export async function resolveLocationQuery(rawQuery: string): Promise<LocationResolutionResult> {
   const trimmed = rawQuery.trim();
   const suggestedSection = detectSectionIntent(trimmed);
 
-  // 1. Check for spoken/typed 8-digit CEP
-  const spokenDigits = extractCepDigitsFromSpeech(trimmed);
-  if (spokenDigits.length === 8) {
-    const formatted = formatCep(spokenDigits);
-    try {
-      const brasilApiPromise = (async (): Promise<{ lat?: number; lng?: number; fallbackData?: any }> => {
-        try {
-          const ctrl = new AbortController();
-          const t = window.setTimeout(() => ctrl.abort(), 2500);
-          const r = await fetch(`https://brasilapi.com.br/api/cep/v2/${spokenDigits}`, { signal: ctrl.signal });
-          window.clearTimeout(t);
-          if (!r.ok) return {};
-          const j = await r.json();
-          return {
-            lat: parseValidCoord(j?.location?.coordinates?.latitude),
-            lng: parseValidCoord(j?.location?.coordinates?.longitude),
-            fallbackData: j,
-          };
-        } catch {
-          return {};
-        }
-      })();
+  // 1. Check for explicit 8-digit CEP pattern (e.g. "39990-000 Proteção 24h") or spoken CEP digits
+  const explicitCepMatch = trimmed.match(/\b(\d{5})[-\s]?(\d{3})\b/);
+  const spokenDigits = explicitCepMatch
+    ? `${explicitCepMatch[1]}${explicitCepMatch[2]}`
+    : extractCepDigitsFromSpeech(trimmed);
 
-      const viaCepPromise = fetch(`https://viacep.com.br/ws/${spokenDigits}/json/`)
-        .then((r) => (r.ok ? r.json() : { erro: true }))
-        .catch(() => ({ erro: true }));
-
-      const [data, geoExtra] = await Promise.all([viaCepPromise, brasilApiPromise]);
-
-      if (data.erro && !geoExtra.fallbackData?.city) {
-        return {
-          formattedInput: formatted,
-          suggestedSection,
-          error: 'CEP não encontrado. Verifique os números ou fale o nome da sua cidade.',
-        };
-      }
-
-      const city = (data.localidade || geoExtra.fallbackData?.city || '').trim();
-      const uf = (data.uf || geoExtra.fallbackData?.state || '').trim();
-      const street = (data.logradouro || geoExtra.fallbackData?.street || '').trim();
-      const neighborhood = (data.bairro || geoExtra.fallbackData?.neighborhood || '').trim();
-      const estimated = estimateCoordinatesForCepAndCity(formatted, city, uf);
-
-      // Ignore BrasilAPI's bogus Praça da Sé coordinate returned for unrelated São Paulo CEPs
-      const isBogusPracaDaSeCoord =
-        typeof geoExtra.lat === 'number' &&
-        typeof geoExtra.lng === 'number' &&
-        !spokenDigits.startsWith('010') &&
-        Math.abs(geoExtra.lat - -23.5475) < 0.005 &&
-        Math.abs(geoExtra.lng - -46.63611) < 0.005;
-
-      const validBrasilApiCoords =
-        typeof geoExtra.lat === 'number' &&
-        typeof geoExtra.lng === 'number' &&
-        !isBogusPracaDaSeCoord
-          ? { lat: geoExtra.lat, lng: geoExtra.lng }
-          : null;
-
-      // IMPORTANT:
-      // - For street-level CEPs, geocode street/bairro via Nominatim first so every CEP searches its exact neighborhood.
-      // - If Nominatim street/bairro isn't found, use valid BrasilAPI coords or geocode the exact city+UF (never default an interior town to a capital).
-      const geocodedStreetOrBairro = await geocodeCepAddress(street, neighborhood, city, uf);
-      const geocodedCity =
-        !geocodedStreetOrBairro && !validBrasilApiCoords && city && uf
-          ? await geocodeBrazilPlace(`${city}, ${uf}, Brasil`)
-          : null;
-
-      const resolvedLat =
-        geocodedStreetOrBairro?.lat ??
-        (spokenDigits.startsWith('0') ? estimated?.lat : undefined) ??
-        validBrasilApiCoords?.lat ??
-        geocodedCity?.lat ??
-        estimated?.lat;
-      const resolvedLng =
-        geocodedStreetOrBairro?.lng ??
-        (spokenDigits.startsWith('0') ? estimated?.lng : undefined) ??
-        validBrasilApiCoords?.lng ??
-        geocodedCity?.lng ??
-        estimated?.lng;
-
-      const rawIbge =
-        typeof data.ibge === 'string'
-          ? data.ibge.replace(/\D/g, '')
-          : typeof geoExtra.fallbackData?.ibge === 'string'
-          ? geoExtra.fallbackData.ibge.replace(/\D/g, '')
-          : '';
-
+  // If user typed a purely numeric CEP attempt (e.g. "00000-000", "1234567", "123456789")
+  if (isLikelyNumericCepInput(trimmed) || spokenDigits.length >= 8) {
+    const targetDigits = spokenDigits.length > 0 ? spokenDigits : trimmed.replace(/\D/g, '');
+    const validation = validateBrazilianCep(targetDigits);
+    if (!validation.isValid) {
       return {
-        cepInfo: {
-          cep: data.cep || formatted,
-          logradouro: street,
-          bairro: neighborhood,
-          localidade: city,
-          uf,
-          ddd: data.ddd,
-          ibge: rawIbge.length >= 6 ? rawIbge : undefined,
-          lat: resolvedLat,
-          lng: resolvedLng,
-        },
-        formattedInput: formatted,
+        formattedInput: validation.formatted,
         suggestedSection,
-      };
-    } catch {
-      return {
-        formattedInput: formatted,
-        suggestedSection,
-        error: 'Não foi possível verificar o CEP agora. Tente falar o nome da sua cidade.',
+        error: validation.error,
       };
     }
+
+    const cepResult = await fetchNormalizedCepLocation(validation.digits);
+    if (cepResult.cepInfo) {
+      return {
+        cepInfo: cepResult.cepInfo,
+        formattedInput: cepResult.formattedInput,
+        suggestedSection,
+      };
+    }
+
+    return {
+      formattedInput: cepResult.formattedInput,
+      suggestedSection,
+      error: cepResult.error || 'CEP não encontrado. Verifique os números ou fale o nome da sua cidade.',
+    };
   }
 
   // 2. Check for known Brazilian city or state spoken/typed
@@ -428,8 +301,19 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
       matchedCity.localidade,
       matchedCity.uf
     );
+    const normalizedKnown = normalizeBrazilianLocation({
+      cep: matchedCity.cep,
+      logradouro: '',
+      bairro: '',
+      localidade: matchedCity.localidade,
+      uf: matchedCity.uf,
+      ddd: matchedCity.ddd,
+      lat: estimated?.lat,
+      lng: estimated?.lng,
+      locationSource: 'catalog',
+    });
     return {
-      cepInfo: {
+      cepInfo: normalizedKnown ?? {
         cep: matchedCity.cep,
         logradouro: '',
         bairro: '',
@@ -452,12 +336,12 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
     if (slug.length >= 3) {
       try {
         const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 3000);
+        const timeoutId = globalThis.setTimeout(() => controller.abort(), 3000);
         const ibgeRes = await fetch(
           `https://servicodados.ibge.gov.br/api/v1/localidades/municipios/${encodeURIComponent(slug)}`,
           { signal: controller.signal }
         );
-        window.clearTimeout(timeoutId);
+        globalThis.clearTimeout(timeoutId);
         if (ibgeRes.ok) {
           const payload = await ibgeRes.json();
           const cityObj = Array.isArray(payload) ? payload[0] : payload;
@@ -465,11 +349,22 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
             cityObj?.microrregiao?.mesorregiao?.UF?.sigla ||
             cityObj?.['regiao-imediata']?.['regiao-intermediaria']?.UF?.sigla;
           if (cityObj?.nome && ufSigla) {
-            const geocoded = await geocodeBrazilPlace(`${cityObj.nome}, ${ufSigla}, Brasil`);
+            const geocoded = await geocodeBrazilPlace(`${cityObj.nome}, ${ufSigla}, Brasil`, cityObj.nome, ufSigla);
             const estimated = estimateCoordinatesForCepAndCity(undefined, cityObj.nome, ufSigla);
             const rawIbge = cityObj?.id ? String(cityObj.id).replace(/\D/g, '') : '';
+            const normalizedIbge = normalizeBrazilianLocation({
+              cep: '00000-000',
+              logradouro: '',
+              bairro: '',
+              localidade: cityObj.nome,
+              uf: ufSigla,
+              ibge: rawIbge.length >= 6 ? rawIbge : undefined,
+              lat: geocoded?.lat ?? estimated?.lat,
+              lng: geocoded?.lng ?? estimated?.lng,
+              locationSource: 'ibge',
+            });
             return {
-              cepInfo: {
+              cepInfo: normalizedIbge ?? {
                 cep: '00000-000',
                 logradouro: '',
                 bairro: '',
@@ -502,7 +397,7 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
   if (spokenDigits.length > 0 && spokenDigits.length < 8) {
     return {
       formattedInput: formatCep(spokenDigits),
-      error: 'Digite ou fale os 8 números do CEP (ex: 01001-000) ou o nome da sua cidade.',
+      error: `CEP incompleto (${spokenDigits.length}/8 dígitos). Digite ou fale todos os 8 números (ex: 01001-000) ou o nome da sua cidade.`,
     };
   }
 

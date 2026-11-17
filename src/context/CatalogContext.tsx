@@ -1,7 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { NATIONAL_SERVICES, REGIONAL_SERVICES } from '../data/servicesData';
 import { SUPPORT_NGOS, type NgoHelpArea, type NgoItem } from '../data/ngosData';
-import type { ServiceItem } from '../types';
+import type { CepInfo, ServiceCategory, ServiceItem } from '../types';
 import {
   areNgosDuplicates,
   isPublicNgoRowActive,
@@ -10,11 +10,13 @@ import {
   mapRowToNgoItem,
   mapRowToServiceItem,
   normalizeNgoNameKey,
+  querySupabaseCatalogByLocation,
   supabase,
   type SupabaseNgoRow,
   type SupabaseServiceRow,
 } from '../lib/supabaseClient';
 import { sanitizeStrictAsciiText } from '../utils/demandAnalytics';
+import { normalizeAsciiKey } from '../utils/cepSearchService';
 
 export interface RegisterNgoInput {
   name: string;
@@ -46,6 +48,11 @@ interface CatalogContextValue {
   ngos: NgoItem[];
   isLiveConnected: boolean;
   isSupabaseConfigured: boolean;
+  isLocationSyncing: boolean;
+  syncCatalogForLocation: (
+    location: CepInfo | null,
+    categoryKey?: ServiceCategory | null
+  ) => Promise<void>;
   findDuplicateNgo: (
     candidate: Pick<NgoItem, 'name' | 'websiteUrl' | 'state' | 'city'>
   ) => NgoItem | undefined;
@@ -61,6 +68,8 @@ const CatalogContext = createContext<CatalogContextValue>({
   ngos: SUPPORT_NGOS,
   isLiveConnected: false,
   isSupabaseConfigured: false,
+  isLocationSyncing: false,
+  syncCatalogForLocation: async () => undefined,
   findDuplicateNgo: () => undefined,
   registerPartnerNgo: async () => ({
     status: 'error',
@@ -150,6 +159,9 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [regionalServices, setRegionalServices] = useState<ServiceItem[]>(REGIONAL_SERVICES);
   const [ngos, setNgos] = useState<NgoItem[]>(SUPPORT_NGOS);
   const [isLiveConnected, setIsLiveConnected] = useState(false);
+  const [isLocationSyncing, setIsLocationSyncing] = useState(false);
+  const lastLocationQueryRef = useRef<string>('');
+  const inFlightQueryRef = useRef<Map<string, Promise<void>>>(new Map());
 
   useEffect(() => {
     const client = supabase;
@@ -483,6 +495,83 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [findDuplicateNgo]
   );
 
+  const syncCatalogForLocation = useCallback(
+    async (location: CepInfo | null, categoryKey: ServiceCategory | null = null): Promise<void> => {
+      if (!location || !isSupabaseConfigured || !supabase) {
+        return;
+      }
+
+      const uf = (location.stateNormalized || location.uf || '').trim().toUpperCase().slice(0, 2);
+      if (uf.length !== 2) return;
+
+      const cityKey = location.cityNormalized || normalizeAsciiKey(location.localidade || '');
+      const cepDigits = (location.cep || '').replace(/\D/g, '');
+      const catKey = categoryKey && categoryKey !== 'todos' ? categoryKey : 'all';
+      const querySignature = `${uf}|${cityKey}|${cepDigits}|${catKey}`;
+
+      if (lastLocationQueryRef.current === querySignature) {
+        return;
+      }
+
+      const existingPromise = inFlightQueryRef.current.get(querySignature);
+      if (existingPromise) {
+        return existingPromise;
+      }
+
+      const run = (async () => {
+        setIsLocationSyncing(true);
+        try {
+          const result = await querySupabaseCatalogByLocation(location, {
+            categoryKey: categoryKey ?? null,
+          });
+
+          if (result.services.length > 0) {
+            setNationalServices((prev) => {
+              let next = [...prev];
+              for (const svc of result.services) {
+                if (svc.isNationalOnline) {
+                  next = upsertById(next, svc);
+                }
+              }
+              return next;
+            });
+
+            setRegionalServices((prev) => {
+              let next = [...prev];
+              for (const svc of result.services) {
+                if (!svc.isNationalOnline) {
+                  next = upsertById(next, svc);
+                }
+              }
+              return next;
+            });
+          }
+
+          if (result.ngos.length > 0) {
+            setNgos((prev) => {
+              let next = [...prev];
+              for (const ngo of result.ngos) {
+                next = upsertNgoUnique(next, ngo);
+              }
+              return next;
+            });
+          }
+
+          lastLocationQueryRef.current = querySignature;
+        } catch {
+          // Offline-first fallback: keep local catalog silently active
+        } finally {
+          inFlightQueryRef.current.delete(querySignature);
+          setIsLocationSyncing(false);
+        }
+      })();
+
+      inFlightQueryRef.current.set(querySignature, run);
+      return run;
+    },
+    []
+  );
+
   return (
     <CatalogContext.Provider
       value={{
@@ -491,6 +580,8 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ngos,
         isLiveConnected,
         isSupabaseConfigured,
+        isLocationSyncing,
+        syncCatalogForLocation,
         findDuplicateNgo,
         registerPartnerNgo,
       }}

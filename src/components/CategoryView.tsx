@@ -64,7 +64,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
   onUpdateLocation,
   onBackToHome
 }) => {
-  const { nationalServices, regionalServices, ngos } = useCatalog();
+  const { nationalServices, regionalServices, ngos, isLocationSyncing } = useCatalog();
   const { nearbySusUnits, loadingNearbySus } = useNearbySusUnits(currentLocation, category);
   const [showCepChange, setShowCepChange] = useState(!currentLocation);
   const [healthFilter, setHealthFilter] = useState<HealthSubFilter>('todos');
@@ -104,7 +104,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
 
     const dbNgoNames = new Set(ngos.map((n) => normalizeNgoNameKey(n.name)));
 
-    const relevantPublicUnits = nearbySusUnits.filter((u) => {
+    const categoryPublicUnits = nearbySusUnits.filter((u) => {
       if (u.category === 'social') {
         return !dbNgoNames.has(normalizeNgoNameKey(u.name));
       }
@@ -126,8 +126,11 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
         return (
           u.category === 'emergencia' ||
           u.accessMode === 'Plantão 24h' ||
+          text.includes('delegacia') ||
+          text.includes('policia') ||
           text.includes('casa da mulher') ||
-          text.includes('creas')
+          text.includes('creas') ||
+          text.includes('cras')
         );
       }
       if (category === 'juridico') {
@@ -138,6 +141,13 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
       }
       return true;
     });
+
+    const relevantPublicUnits =
+      categoryPublicUnits.length > 0
+        ? categoryPublicUnits
+        : nearbySusUnits
+            .filter((u) => u.category !== 'social' || !dbNgoNames.has(normalizeNgoNameKey(u.name)))
+            .slice(0, 6);
 
     let combined = mergeUniqueServices(
       [...matchingRegional, ...matchingNational],
@@ -173,10 +183,10 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
   const localAndPhoneServices = useMemo(() => {
     const allLocal = rankedServices.filter((item) => !isFreeOnlineOffer(item.service));
     const closePhysicalCount = allLocal.filter(
-      (r) => r.distanceKm !== null && r.distanceKm <= 10
+      (r) => r.distanceKm !== null && r.distanceKm <= 15
     ).length;
-    if (closePhysicalCount >= 4) {
-      return allLocal.filter((r) => r.distanceKm === null || r.distanceKm <= 12);
+    if (closePhysicalCount >= 8) {
+      return allLocal.filter((r) => r.distanceKm === null || r.distanceKm <= 22);
     }
     return allLocal;
   }, [rankedServices]);
@@ -377,7 +387,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
           )}
         </div>
 
-        {loadingNearbySus && currentLocation && (
+        {(loadingNearbySus || isLocationSyncing) && currentLocation && (
           <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 text-xs text-purple-950 flex items-center gap-2">
             <RefreshCw className="w-4 h-4 animate-spin text-pink-600 shrink-0" />
             <span>Buscando unidades 100% gratuitas da rede pública e ONGs próximas a {currentLocation.localidade} - {currentLocation.uf}...</span>
@@ -392,7 +402,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
           </div>
         )}
 
-        {rankedServices.length === 0 && !loadingNearbySus && (
+        {rankedServices.length === 0 && !loadingNearbySus && !isLocationSyncing && (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-3">
             <p className="text-sm font-medium text-slate-800">
               Nenhum serviço específico encontrado para este filtro ou CEP.
