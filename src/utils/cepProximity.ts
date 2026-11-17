@@ -189,9 +189,47 @@ export function haversineDistanceKm(
   return R * c;
 }
 
+const STATE_CAPITAL_NAMES: Record<string, string> = {
+  SP: 'sao paulo',
+  RJ: 'rio de janeiro',
+  MG: 'belo horizonte',
+  ES: 'vitoria',
+  BA: 'salvador',
+  SE: 'aracaju',
+  AL: 'maceio',
+  PE: 'recife',
+  PB: 'joao pessoa',
+  RN: 'natal',
+  CE: 'fortaleza',
+  PI: 'teresina',
+  MA: 'sao luis',
+  PA: 'belem',
+  AP: 'macapa',
+  AM: 'manaus',
+  RR: 'boa vista',
+  AC: 'rio branco',
+  RO: 'porto velho',
+  TO: 'palmas',
+  DF: 'brasilia',
+  GO: 'goiania',
+  MT: 'cuiaba',
+  MS: 'campo grande',
+  PR: 'curitiba',
+  SC: 'florianopolis',
+  RS: 'porto alegre',
+};
+
+function normalizeSimpleCity(name?: string): string {
+  return (name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
 export function estimateCoordinatesForCepAndCity(
   cep?: string,
-  _city?: string,
+  city?: string,
   state?: string
 ): Coord | null {
   const digits = (cep || '').replace(/\D/g, '');
@@ -206,8 +244,18 @@ export function estimateCoordinatesForCepAndCity(
       return CEP_PREFIX3_COORDS[matchingKey];
     }
   }
-  if (state && STATE_CAPITALS_COORDS[state.toUpperCase()]) {
-    return STATE_CAPITALS_COORDS[state.toUpperCase()];
+
+  const uf = state?.trim().toUpperCase();
+  const normCity = normalizeSimpleCity(city);
+  const capitalName = uf ? STATE_CAPITAL_NAMES[uf] : undefined;
+
+  // Never map an interior municipality (e.g. Abaíra) onto the state capital (e.g. Salvador)
+  if (normCity && capitalName && normCity !== capitalName) {
+    return null;
+  }
+
+  if (uf && STATE_CAPITALS_COORDS[uf]) {
+    return STATE_CAPITALS_COORDS[uf];
   }
   if (digits.length >= 1 && CEP_REGION1_COORDS[digits[0]]) {
     return CEP_REGION1_COORDS[digits[0]];
@@ -251,14 +299,31 @@ export function formatLocationDisplay(location: CepInfo): string {
   return `${parts.join(', ')}${cepSuffix}`;
 }
 
+export type MapsPublicTopic =
+  | 'saude'
+  | 'psicologico'
+  | 'juridico'
+  | 'emergencia'
+  | 'cursos'
+  | 'ongs_apoio'
+  | 'geral';
+
 export function buildMapsSusSearchUrl(
   location: CepInfo,
-  topic: 'emergencia' | 'geral' = 'geral'
+  topic: MapsPublicTopic = 'geral'
 ): string {
   const queryLabel =
     topic === 'emergencia'
-      ? 'Hospital UPA Delegacia da Mulher'
-      : 'UBS Posto de Saúde Hospital SUS';
+      ? 'Delegacia da Mulher UPA Hospital Público ONG mulher gratuito'
+      : topic === 'psicologico'
+      ? 'CAPS UBS Posto de Saúde CREAS ONG mulher apoio psicológico gratuito'
+      : topic === 'juridico'
+      ? 'Defensoria Pública CREAS Casa da Mulher ONG mulher gratuito'
+      : topic === 'cursos'
+      ? 'Instituto Federal SINE CRAS ONG mulher cursos gratuitos'
+      : topic === 'saude'
+      ? 'UBS Posto de Saúde Hospital Público ONG mulher SUS gratuito'
+      : 'UBS Posto de Saúde Hospital Público CRAS Defensoria ONG mulher gratuito';
 
   if (typeof location.lat === 'number' && typeof location.lng === 'number') {
     return `https://www.google.com/maps/search/${encodeURIComponent(

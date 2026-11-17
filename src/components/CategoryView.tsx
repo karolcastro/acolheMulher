@@ -50,7 +50,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
   onBackToHome
 }) => {
   const { nationalServices, regionalServices, ngos } = useCatalog();
-  const { nearbySusUnits, loadingNearbySus } = useNearbySusUnits(currentLocation);
+  const { nearbySusUnits, loadingNearbySus } = useNearbySusUnits(currentLocation, category);
   const [showCepChange, setShowCepChange] = useState(!currentLocation);
   const [healthFilter, setHealthFilter] = useState<HealthSubFilter>('todos');
 
@@ -87,16 +87,42 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
       return false;
     });
 
-    const relevantSusUnits =
-      category === 'saude' || category === 'psicologico'
-        ? nearbySusUnits
-        : category === 'emergencia'
-        ? nearbySusUnits.filter((u) => u.accessMode === 'Plantão 24h')
-        : [];
+    const relevantPublicUnits = nearbySusUnits.filter((u) => {
+      if (u.category === 'social') return true;
+      const text = `${u.subcategory} ${u.name} ${(u.tags || []).join(' ')}`.toLowerCase();
+      if (category === 'saude') {
+        return u.category === 'saude' || u.category === 'psicologico';
+      }
+      if (category === 'psicologico') {
+        return (
+          u.category === 'psicologico' ||
+          u.category === 'saude' ||
+          text.includes('creas') ||
+          text.includes('cras') ||
+          text.includes('casa da mulher') ||
+          text.includes('cram')
+        );
+      }
+      if (category === 'emergencia') {
+        return (
+          u.category === 'emergencia' ||
+          u.accessMode === 'Plantão 24h' ||
+          text.includes('casa da mulher') ||
+          text.includes('creas')
+        );
+      }
+      if (category === 'juridico') {
+        return u.category === 'juridico';
+      }
+      if (category === 'cursos') {
+        return u.category === 'cursos' || text.includes('cras') || text.includes('casa da mulher');
+      }
+      return true;
+    });
 
     let combined = mergeUniqueServices(
       [...matchingRegional, ...matchingNational],
-      relevantSusUnits
+      relevantPublicUnits
     );
 
     if (category === 'saude' && healthFilter !== 'todos') {
@@ -138,22 +164,31 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
 
   const matchingNgos = useMemo(() => {
     const userUf = currentLocation?.uf?.trim().toUpperCase();
-    return ngos
-      .filter(
-        (ngo) =>
-          ngo.relatedCategories.includes(
-            category as 'juridico' | 'psicologico' | 'saude' | 'cursos' | 'emergencia'
-          ) &&
-          (!ngo.state || !userUf || ngo.state.toUpperCase() === userUf)
+    const filterAndSort = (list: typeof ngos) =>
+      list
+        .filter((ngo) => !ngo.state || !userUf || ngo.state.toUpperCase() === userUf)
+        .sort((a, b) => {
+          if (userUf) {
+            const aLocal = a.state?.toUpperCase() === userUf ? 0 : 1;
+            const bLocal = b.state?.toUpperCase() === userUf ? 0 : 1;
+            if (aLocal !== bLocal) return aLocal - bLocal;
+          }
+          return 0;
+        });
+
+    const categoryMatches = filterAndSort(
+      ngos.filter((ngo) =>
+        ngo.relatedCategories.includes(
+          category as 'juridico' | 'psicologico' | 'saude' | 'cursos' | 'emergencia'
+        )
       )
-      .sort((a, b) => {
-        if (userUf) {
-          const aLocal = a.state?.toUpperCase() === userUf ? 0 : 1;
-          const bLocal = b.state?.toUpperCase() === userUf ? 0 : 1;
-          if (aLocal !== bLocal) return aLocal - bLocal;
-        }
-        return 0;
-      });
+    );
+
+    if (categoryMatches.length > 0) {
+      return categoryMatches;
+    }
+
+    return filterAndSort(ngos);
   }, [ngos, category, currentLocation]);
 
   const healthTabs: { id: HealthSubFilter; label: string }[] = [
@@ -163,15 +198,19 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     { id: 'sus', label: 'UBSs, Hospitais & SUS' },
   ];
 
-  const showSusMapShortcut =
-    Boolean(currentLocation) &&
-    (category === 'saude' || category === 'emergencia' || category === 'psicologico');
+  const showSusMapShortcut = Boolean(currentLocation);
+
+  const mapsTopic =
+    category === 'saude' ||
+    category === 'psicologico' ||
+    category === 'juridico' ||
+    category === 'emergencia' ||
+    category === 'cursos'
+      ? category
+      : 'geral';
 
   const mapsSusUrl = currentLocation
-    ? buildMapsSusSearchUrl(
-        currentLocation,
-        category === 'emergencia' ? 'emergencia' : 'geral'
-      )
+    ? buildMapsSusSearchUrl(currentLocation, mapsTopic)
     : '';
 
   return (
@@ -202,8 +241,8 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
             <div className="flex flex-wrap items-center gap-2 text-slate-700">
               <MapPin className="w-4 h-4 text-blue-700 shrink-0" />
               <span>
-                Mostrando <strong>ofertas online gratuitas primeiro</strong> e unidades próximas a{' '}
-                <strong>{formatLocationDisplay(currentLocation)}</strong>
+                Mostrando <strong>apenas opções 100% gratuitas</strong> (ofertas online primeiro + rede pública e ONGs próximas a{' '}
+                <strong>{formatLocationDisplay(currentLocation)}</strong>)
               </span>
               <button
                 type="button"
@@ -275,13 +314,13 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
               <Building2 className="w-5 h-5 text-blue-800 shrink-0" />
               <span>
                 {currentLocation
-                  ? `2. UBSs, Hospitais e Locais Próximos a ${formatLocationDisplay(currentLocation)}`
-                  : '2. Telefones 24h e Unidades Presenciais'}
+                  ? `2. Rede Pública e Locais Gratuitos Próximos a ${formatLocationDisplay(currentLocation)}`
+                  : '2. Telefones 24h e Unidades Públicas Gratuitas'}
               </span>
             </h2>
             {!currentLocation && (
               <p className="text-xs text-slate-600">
-                Informe seu CEP ou cidade acima para localizar UBSs, Postos de Saúde e Hospitais públicos perto de você.
+                Informe seu CEP ou cidade acima para localizar UBSs, Hospitais públicos, Defensorias, CRAS/CREAS e delegacias perto de você.
               </p>
             )}
           </div>
@@ -294,16 +333,16 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
               className="min-h-[40px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 text-xs font-semibold transition-colors whitespace-nowrap self-start sm:self-auto"
             >
               <MapPin className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-              <span>Ver UBSs e Hospitais no Mapa</span>
+              <span>Ver Rede Pública no Mapa</span>
               <ExternalLink className="w-3 h-3 shrink-0" />
             </a>
           )}
         </div>
 
-        {loadingNearbySus && currentLocation && (category === 'saude' || category === 'emergencia' || category === 'psicologico') && (
+        {loadingNearbySus && currentLocation && (
           <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 text-xs text-purple-950 flex items-center gap-2">
             <RefreshCw className="w-4 h-4 animate-spin text-pink-600 shrink-0" />
-            <span>Buscando UBSs, Postos de Saúde, UPAs e Hospitais próximos a {currentLocation.localidade} - {currentLocation.uf}...</span>
+            <span>Buscando unidades 100% gratuitas da rede pública e ONGs próximas a {currentLocation.localidade} - {currentLocation.uf}...</span>
           </div>
         )}
 
@@ -331,18 +370,18 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
                 className="min-h-[42px] inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-900 text-white text-xs font-semibold hover:bg-blue-950 transition-colors"
               >
                 <MapPin className="w-3.5 h-3.5 shrink-0" />
-                <span>Abrir UBSs e Hospitais perto de {currentLocation?.localidade}</span>
+                <span>Abrir Rede Pública e ONGs perto de {currentLocation?.localidade}</span>
               </a>
             )}
           </div>
         )}
       </section>
 
-      {/* Matching NGOs */}
+      {/* Matching Women-Focused NGOs */}
       {matchingNgos.length > 0 && (
         <section className="space-y-4 pt-6 border-t border-slate-200">
           <h2 className="text-lg font-display font-bold text-slate-900">
-            ONGs que também ajudam gratuitamente nessa área
+            3. ONGs voltadas para o público feminino que também apoiam gratuitamente
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {matchingNgos.map((ngo) => (

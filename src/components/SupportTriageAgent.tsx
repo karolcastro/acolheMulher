@@ -111,7 +111,15 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
   onClearLocation,
 }) => {
   const { nationalServices, regionalServices, ngos } = useCatalog();
-  const { nearbySusUnits, loadingNearbySus } = useNearbySusUnits(currentLocation);
+  const activeCategoryKey =
+    selectedNeed && selectedNeed in SECTION_META
+      ? (selectedNeed as keyof typeof SECTION_META)
+      : null;
+
+  const { nearbySusUnits, loadingNearbySus } = useNearbySusUnits(
+    currentLocation,
+    activeCategoryKey || 'geral'
+  );
   const [needInput, setNeedInput] = useState('');
   const [unclearNotice, setUnclearNotice] = useState<string | null>(null);
   const [showAllNearby, setShowAllNearby] = useState(false);
@@ -204,11 +212,6 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     },
   });
 
-  const activeCategoryKey =
-    selectedNeed && selectedNeed in SECTION_META
-      ? (selectedNeed as keyof typeof SECTION_META)
-      : null;
-
   const matchedPreview = useMemo(() => {
     const mergeUnique = (base: ServiceItem[], extra: ServiceItem[]): ServiceItem[] => {
       const seenIds = new Set<string>();
@@ -223,6 +226,19 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       }
       return out;
     };
+
+    const userUf = currentLocation?.uf?.trim().toUpperCase();
+    const sortByUf = <T extends { state?: string }>(items: T[]): T[] =>
+      [...items]
+        .filter((item) => !item.state || !userUf || item.state.toUpperCase() === userUf)
+        .sort((a, b) => {
+          if (userUf) {
+            const aLocal = a.state?.toUpperCase() === userUf ? 0 : 1;
+            const bLocal = b.state?.toUpperCase() === userUf ? 0 : 1;
+            if (aLocal !== bLocal) return aLocal - bLocal;
+          }
+          return 0;
+        });
 
     if (showAllNearby && !activeCategoryKey) {
       const mergedAll = mergeUnique(
@@ -240,11 +256,13 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
           ? allLocal.filter((r) => r.distanceKm === null || r.distanceKm <= 12)
           : allLocal
       ).slice(0, 14);
+      const allMatchingNgos = sortByUf(ngos).slice(0, 6);
+
       return {
         onlineServices: onlineFirst,
         localServices: localAndPhone,
-        ngoItems: [],
-        totalCount: rankedAll.length,
+        ngoItems: allMatchingNgos,
+        totalCount: rankedAll.length + allMatchingNgos.length,
       };
     }
 
@@ -252,38 +270,58 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       return {
         onlineServices: [] as RankedServiceItem[],
         localServices: [] as RankedServiceItem[],
-        ngoItems: ngos.slice(0, 4),
+        ngoItems: sortByUf(ngos).slice(0, 4),
         totalCount: 0,
       };
     }
 
     if (activeCategoryKey === 'ongs_apoio') {
-      const userUf = currentLocation?.uf?.trim().toUpperCase();
-      const sortedNgos = [...ngos]
-        .filter((ngo) => !ngo.state || !userUf || ngo.state.toUpperCase() === userUf)
-        .sort((a, b) => {
-          if (userUf) {
-            const aLocal = a.state?.toUpperCase() === userUf ? 0 : 1;
-            const bLocal = b.state?.toUpperCase() === userUf ? 0 : 1;
-            if (aLocal !== bLocal) return aLocal - bLocal;
-          }
-          return 0;
-        });
+      const sortedNgos = sortByUf(ngos);
+      const localDynamicNgos = sortServicesByCepProximity(
+        nearbySusUnits.filter((u) => u.category === 'social'),
+        currentLocation
+      );
 
       return {
         onlineServices: [] as RankedServiceItem[],
-        localServices: [] as RankedServiceItem[],
-        ngoItems: sortedNgos.slice(0, 6),
-        totalCount: sortedNgos.length,
+        localServices: localDynamicNgos,
+        ngoItems: sortedNgos.slice(0, 8),
+        totalCount: sortedNgos.length + localDynamicNgos.length,
       };
     }
 
-    const relevantDynamicUnits =
-      activeCategoryKey === 'saude' || activeCategoryKey === 'psicologico'
-        ? nearbySusUnits
-        : activeCategoryKey === 'emergencia'
-        ? nearbySusUnits.filter((u) => u.accessMode === 'Plantão 24h')
-        : [];
+    const relevantDynamicUnits = nearbySusUnits.filter((u) => {
+      if (u.category === 'social') return true;
+      const text = `${u.subcategory} ${u.name} ${(u.tags || []).join(' ')}`.toLowerCase();
+      if (activeCategoryKey === 'saude') {
+        return u.category === 'saude' || u.category === 'psicologico';
+      }
+      if (activeCategoryKey === 'psicologico') {
+        return (
+          u.category === 'psicologico' ||
+          u.category === 'saude' ||
+          text.includes('creas') ||
+          text.includes('cras') ||
+          text.includes('casa da mulher') ||
+          text.includes('cram')
+        );
+      }
+      if (activeCategoryKey === 'emergencia') {
+        return (
+          u.category === 'emergencia' ||
+          u.accessMode === 'Plantão 24h' ||
+          text.includes('casa da mulher') ||
+          text.includes('creas')
+        );
+      }
+      if (activeCategoryKey === 'juridico') {
+        return u.category === 'juridico';
+      }
+      if (activeCategoryKey === 'cursos') {
+        return u.category === 'cursos' || text.includes('cras') || text.includes('casa da mulher');
+      }
+      return true;
+    });
 
     const matchingRegional = regionalServices.filter((s) => {
       if (s.category === activeCategoryKey) return true;
@@ -326,30 +364,22 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
         : allLocalAndPhone
     ).slice(0, 14);
 
-    const userUf = currentLocation?.uf?.trim().toUpperCase();
-    const categoryNgos = ngos
-      .filter(
-        (ngo) =>
-          ngo.relatedCategories.includes(
-            activeCategoryKey as 'juridico' | 'psicologico' | 'saude' | 'cursos' | 'emergencia'
-          ) &&
-          (!ngo.state || !userUf || ngo.state.toUpperCase() === userUf)
+    const matchedCategoryNgos = sortByUf(
+      ngos.filter((ngo) =>
+        ngo.relatedCategories.includes(
+          activeCategoryKey as 'juridico' | 'psicologico' | 'saude' | 'cursos' | 'emergencia'
+        )
       )
-      .sort((a, b) => {
-        if (userUf) {
-          const aLocal = a.state?.toUpperCase() === userUf ? 0 : 1;
-          const bLocal = b.state?.toUpperCase() === userUf ? 0 : 1;
-          if (aLocal !== bLocal) return aLocal - bLocal;
-        }
-        return 0;
-      })
-      .slice(0, 4);
+    );
+    const categoryNgos = (
+      matchedCategoryNgos.length > 0 ? matchedCategoryNgos : sortByUf(ngos)
+    ).slice(0, 5);
 
     return {
       onlineServices: onlineFirst,
       localServices: localAndPhone,
       ngoItems: categoryNgos,
-      totalCount: ranked.length,
+      totalCount: ranked.length + categoryNgos.length,
     };
   }, [activeCategoryKey, showAllNearby, currentLocation, nationalServices, regionalServices, nearbySusUnits, ngos]);
 
@@ -481,7 +511,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                 )}
                 {activeCategoryKey
                   ? SECTION_META[activeCategoryKey].empathyMessage
-                  : `Mostrando atendimentos em até 30 km de ${locationLabel} (no mesmo estado), do mais próximo ao mais distante:`}
+                  : `Mostrando apenas opções 100% gratuitas (ofertas online primeiro + rede pública e ONGs em até 30 km de ${locationLabel}):`}
               </p>
             )}
           </div>
@@ -666,8 +696,8 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                     <Building2 className="w-3.5 h-3.5 text-blue-700 shrink-0" />
                     <span>
                       {currentLocation
-                        ? `2. UBSs, Hospitais e Locais Próximos a ${locationLabel}`
-                        : '2. Telefones 24h e Locais Presenciais'}
+                        ? `2. Rede Pública e Locais Gratuitos Próximos a ${locationLabel}`
+                        : '2. Telefones 24h e Rede Pública Gratuita'}
                     </span>
                   </div>
 
@@ -675,13 +705,13 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                     <a
                       href={buildMapsSusSearchUrl(
                         currentLocation,
-                        activeCategoryKey === 'emergencia' ? 'emergencia' : 'geral'
+                        activeCategoryKey || 'geral'
                       )}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[11px] font-semibold text-blue-800 hover:text-pink-700 inline-flex items-center gap-1 underline underline-offset-2"
                     >
-                      <span>Abrir UBSs e Hospitais no Mapa</span>
+                      <span>Abrir Rede Pública no Mapa</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   )}
@@ -690,7 +720,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                 {loadingNearbySus && currentLocation && (
                   <div className="text-[11px] text-purple-800 flex items-center gap-1.5 py-1">
                     <RefreshCw className="w-3.5 h-3.5 animate-spin text-pink-600 shrink-0" />
-                    <span>Buscando UBSs e hospitais públicos perto do seu CEP...</span>
+                    <span>Buscando apenas opções 100% gratuitas da rede pública e ONGs perto do seu CEP...</span>
                   </div>
                 )}
 
@@ -704,8 +734,8 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                   <Users className="w-3.5 h-3.5 text-purple-700 shrink-0" />
                   <span>
                     {activeCategoryKey === 'ongs_apoio'
-                      ? 'ONGs que apoiam gratuitamente'
-                      : '3. ONGs que também apoiam nesta área'}
+                      ? 'ONGs voltadas para mulheres (gratuitas)'
+                      : '3. ONGs voltadas para mulheres nesta área'}
                   </span>
                 </div>
                 {matchedPreview.ngoItems.map((ngo) => (

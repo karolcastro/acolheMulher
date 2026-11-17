@@ -1,9 +1,17 @@
-import { CepInfo, ServiceItem } from '../types';
+import { CepInfo, ServiceCategory, ServiceItem } from '../types';
 import {
   estimateCoordinatesForCepAndCity,
   haversineDistanceKm,
   MAX_PROXIMITY_KM,
 } from './cepProximity';
+
+export type PublicSearchScope =
+  | 'saude'
+  | 'psicologico'
+  | 'juridico'
+  | 'emergencia'
+  | 'cursos'
+  | 'geral';
 
 interface OverpassElement {
   id: number;
@@ -14,46 +22,289 @@ interface OverpassElement {
   tags?: Record<string, string>;
 }
 
-const nearbyHealthCache = new Map<string, ServiceItem[]>();
+const nearbyPublicCache = new Map<string, ServiceItem[]>();
 
-function isLikelyPublicHealthUnit(tags: Record<string, string>): {
-  matched: boolean;
-  kind: 'ubs' | 'hospital' | 'upa';
-} {
-  const name = (tags.name || '').toLowerCase();
-  const amenity = (tags.amenity || '').toLowerCase();
-  const healthcare = (tags.healthcare || '').toLowerCase();
-  const operatorType = (tags['operator:type'] || tags.operator || '').toLowerCase();
+const EXCLUDED_ROAD_PREFIX_RE =
+  /^(rua|avenida|av\.?|travessa|alameda|estrada|rodovia|largo|pra[çc]a|viela|beco)\b/i;
 
-  const isUbsName =
-    /\b(ubs|unidade basica|unidade básica|posto de saude|posto de saúde|centro de saude|centro de saúde|psf|esf|ama|clinica da familia|clínica da família|saude da familia|saúde da família|policlinica|policlínica|caps|casa da mulher|cram|cdcm|creas)\b/i.test(
+// Strictly exclude non-support specialties, access gates, commercial venues, and ALL Brazilian private/paid hospitals, clinics, labs, and plans.
+const EXCLUDED_NON_SUPPORT_RE =
+  /\b(olhos|oftalmo\w*|otorrino\w*|ortoped\w*|odont\w*|dent\w*|est[eé]tic\w*|pl[aá]stica|veterin[aá]r\w*|pet\b|consult[oó]rio\w*|acesso\s*\||portaria|estacionamento|garagem|audit[oó]rio|heliponto|ambulatório de|laborat[oó]rio|diagn[oó]stico|imagem|radiologia|resson[aâ]ncia|tomografia|ultrassom|hemodi[aá]lise|hospital[- ]dia|day hospital|check[- ]up|medicina diagn[oó]stica|c[aá]rdio pulmonar|cardiolog\w*|oncolog\w*|instituto do c[aâ]ncer|instituto de olh|cl[ií]nica de|cl[ií]nica particular|cl[ií]nica privada|unimed|hapvida|notredame|interm[eé]dica|amil|bradesco sa[uú]de|sulam[eé]rica|prevent senior|porto seguro sa[uú]de|medsenior|rede d['’]?or|copa d['’]?or|barra d['’]?or|quinta d['’]?or|hospital star|vila nova star|s[aã]o luiz|s[ií]rio[- ]liban[eê]s|albert einstein|hcor|hospital do cora[çc][aã]o|hospital alem[aã]o oswaldo cruz|pro[- ]matre|santa joana|s[aã]o camilo|hospital santa izabel|santa izabel|hospital portugu[eê]s|real portugu[eê]s|hospital alian[çc]a|hospital da bahia|mater dei|biocor|fel[ií]cio rocho|lifecenter|hospital vera cruz|hospital santa paula|hospital santa catarina|casa de sa[uú]de santa catarina|samaritano|leforte|nove de julho|9 de julho|hospital bras[ií]lia|hospital anchieta|hospital santa l[uú]cia|hospital santa helena|moinhos de vento|m[aã]e de deus|divina provid[eê]ncia|marcelino champagnat|hospital pilar|hospital vit[óo]ria|hospital s[aã]o lucas|benefic[eê]ncia portuguesa|hospital memorial|dasa|kora|sabin|fleury|delboni|lavoisier|hermes pardini|medcenter|particular|privad[oa]|conv[eê]nio|plano de sa[uú]de|pago|mensalidade|autoescola|farm[aá]cia|drogaria|[oó]tica|[oó]ticas|academia|sal[aã]o de beleza|barbearia|restaurante|supermercado|lot[eé]rica|hotel|pousada|motel)\b/i;
+
+export function normalizePublicScope(category?: ServiceCategory | 'ongs_apoio' | 'geral'): PublicSearchScope {
+  if (
+    category === 'saude' ||
+    category === 'psicologico' ||
+    category === 'juridico' ||
+    category === 'emergencia' ||
+    category === 'cursos'
+  ) {
+    return category;
+  }
+  return 'geral';
+}
+
+export function isExcludedPublicPoi(
+  name: string,
+  tags?: Record<string, string>,
+  osmClass?: string
+): boolean {
+  const trimmed = (name || '').trim();
+  if (!trimmed || trimmed.length < 3) return true;
+  if (osmClass === 'highway' || EXCLUDED_ROAD_PREFIX_RE.test(trimmed)) return true;
+  if (EXCLUDED_NON_SUPPORT_RE.test(trimmed)) return true;
+
+  if (tags) {
+    const operatorAndBrand = `${tags.operator || ''} ${tags.brand || ''} ${tags.network || ''}`.trim();
+    if (operatorAndBrand && EXCLUDED_NON_SUPPORT_RE.test(operatorAndBrand)) {
+      return true;
+    }
+
+    if (tags.fee === 'yes' || Boolean(tags.charge) || tags['healthcare:for'] === 'private') {
+      return true;
+    }
+
+    const opType = (tags['operator:type'] || tags.ownership || '').toLowerCase();
+    if (opType === 'private') {
+      const explicitFreeCharity = /\b(santa casa|sus\b|filantr[oó]pic|sem fins lucrativos|gratuit|ong\b)\b/i.test(
+        `${trimmed} ${tags.description || ''} ${operatorAndBrand}`
+      );
+      if (!explicitFreeCharity) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+type UnitKind = 'deam' | 'defensoria' | 'suas' | 'cursos' | 'caps' | 'ubs' | 'upa' | 'hospital' | 'ong';
+
+interface ClassifiedUnit {
+  kind: UnitKind;
+  category: ServiceCategory;
+  subcategory: string;
+  description: string;
+  accessMode: ServiceItem['accessMode'];
+  defaultHours: string;
+  defaultPhone?: string;
+  freeConfirmation: string;
+  tags: string[];
+}
+
+export function classifyFreePublicUnit(
+  rawName: string,
+  tags?: Record<string, string>,
+  osmClass?: string
+): ClassifiedUnit | null {
+  if (isExcludedPublicPoi(rawName, tags, osmClass)) {
+    return null;
+  }
+
+  const name = rawName.toLowerCase();
+  const amenity = (tags?.amenity || '').toLowerCase();
+  const healthcare = (tags?.healthcare || '').toLowerCase();
+  const operatorText = `${tags?.['operator:type'] || ''} ${tags?.operator || ''} ${tags?.network || ''} ${tags?.ownership || ''} ${tags?.description || ''}`.toLowerCase();
+
+  const hasPublicOperator =
+    /\b(public|government|municip|estadual|federal|sus|prefeitura|secretaria|minist[eé]rio|governo|ebserh|fiocruz|defensoria|universidade federal|universidade estadual)\b/i.test(
+      operatorText
+    ) || tags?.fee === 'no';
+
+  // 1. Delegacia da Mulher / Casa da Mulher Brasileira (Emergência & Proteção)
+  if (
+    /\b(delegacia d[aeo] mulher|delegacia de defesa da mulher|delegacia especializada de atendimento [àa] mulher|deam|ddm|casa da mulher brasileira)\b/i.test(
+      name
+    )
+  ) {
+    return {
+      kind: 'deam',
+      category: 'emergencia',
+      subcategory: 'Proteção Pública 24h (Rede da Mulher)',
+      description:
+        'Unidade pública especializada no atendimento gratuito e sigiloso à mulher em situação de violência para registro de ocorrência e pedido de medida protetiva.',
+      accessMode: 'Plantão 24h',
+      defaultHours: 'Atendimento gratuito (confirmar plantão 24h ou horário local)',
+      defaultPhone: '180',
+      freeConfirmation: 'Serviço público gratuito do Estado / Rede de Proteção à Mulher.',
+      tags: ['Delegacia da Mulher', 'DEAM', 'Proteção', 'Gratuito', 'Medida Protetiva'],
+    };
+  }
+
+  // 2. Defensoria Pública / Núcleos Jurídicos Gratuitos
+  if (
+    /\b(defensoria p[uú]blica|n[uú]cleo da defensoria|juizado da mulher|juizado de viol[eê]ncia dom[eé]stica|oab mulher|n[uú]cleo de pr[aá]tica jur[ií]dica)\b/i.test(
+      name
+    )
+  ) {
+    return {
+      kind: 'defensoria',
+      category: 'juridico',
+      subcategory: 'Defensoria / Orientação Jurídica Gratuita',
+      description:
+        'Atendimento jurídico 100% gratuito com defensoras públicas ou equipes jurídicas para medidas protetivas, pensão alimentícia, guarda e divórcio.',
+      accessMode: 'Agendamento Prévio',
+      defaultHours: 'Segunda a Sexta, horário comercial',
+      defaultPhone: '129',
+      freeConfirmation: 'Assistência jurídica pública integral e gratuita garantida por lei.',
+      tags: ['Defensoria Pública', 'Advogada Gratuita', 'Direitos', 'Gratuito'],
+    };
+  }
+
+  // 3. CREAS / CRAS / Casa da Mulher / CRAM / CEAM / CDCM (SUAS - Assistência & Acolhimento)
+  if (
+    /\b(cras|creas|centro de refer[eê]ncia de assist[eê]ncia social|centro de refer[eê]ncia especializado|casa da mulher|cram|ceam|cdcm)\b/i.test(
+      name
+    )
+  ) {
+    const isSpecializedWomenOrCreas = /\b(creas|especializado|casa da mulher|cram|ceam|cdcm)\b/i.test(name);
+    return {
+      kind: 'suas',
+      category: 'juridico',
+      subcategory: isSpecializedWomenOrCreas
+        ? 'CREAS / Centro de Referência Gratuito (SUAS)'
+        : 'CRAS / Assistência Social Gratuita (SUAS)',
+      description: isSpecializedWomenOrCreas
+        ? 'Unidade pública gratuita (SUAS) com psicólogas e assistentes sociais para acolhimento, proteção contra violência, orientação de direitos e encaminhamentos.'
+        : 'Centro público gratuito de referência social para auxílio em benefícios, apoio psicossocial, encaminhamento a cursos e garantia de direitos.',
+      accessMode: 'Livre Demanda (Porta Aberta)',
+      defaultHours: 'Segunda a Sexta, das 08h às 17h',
+      defaultPhone: '180',
+      freeConfirmation: 'Serviço público 100% gratuito da rede SUAS (Assistência Social).',
+      tags: isSpecializedWomenOrCreas
+        ? ['CREAS', 'Casa da Mulher', 'Acolhimento', 'Psicologia', 'Direitos', 'Gratuito']
+        : ['CRAS', 'SUAS', 'Assistência Social', 'Cursos', 'Acolhimento', 'Gratuito'],
+    };
+  }
+
+  // 4. Institutos Federais, SINE, PAT e Escolas Técnicas Públicas (Cursos & Emprego Gratuitos)
+  if (
+    /\b(instituto federal|ifsp|ifrj|ifba|ifmg|ifpr|ifrs|ifsc|ifpe|ifce|ifpa|ifma|ifgo|ifmt|ifms|ifam|ifpb|ifrn|ifal|ifse|ifpi|ifes|ifto|ifro|ifrr|ifap|ifac|ifb|sine|sistema nacional de emprego|posto de atendimento ao trabalhador|casa do trabalhador|escola t[eé]cnica estadual|etec|centro vocacional tecnol[oó]gico)\b/i.test(
+      name
+    )
+  ) {
+    return {
+      kind: 'cursos',
+      category: 'cursos',
+      subcategory: 'Capacitação & Emprego Público Gratuito',
+      description:
+        'Instituição pública gratuita para qualificação profissional, cursos técnicos, Programa Mulheres Mil e intermediação de vagas de emprego sem taxas.',
+      accessMode: 'Livre Demanda (Porta Aberta)',
+      defaultHours: 'Segunda a Sexta, horário comercial',
+      freeConfirmation: 'Ensino e atendimento ao trabalhador 100% públicos e gratuitos.',
+      tags: ['Cursos Gratuitos', 'Capacitação', 'Renda', 'Emprego', 'Rede Pública'],
+    };
+  }
+
+  // 5. CAPS (Saúde Mental Pública SUS)
+  if (/\b(caps|capsi|caps ad|centro de aten[çc][aã]o psicossocial)\b/i.test(name)) {
+    return {
+      kind: 'caps',
+      category: 'psicologico',
+      subcategory: 'CAPS · Apoio Psicológico Público (SUS)',
+      description:
+        'Centro de Atenção Psicossocial do SUS próximo ao seu CEP. Oferece acolhimento gratuito em saúde mental por porta aberta, sem necessidade de encaminhamento prévio.',
+      accessMode: 'Livre Demanda (Porta Aberta)',
+      defaultHours: 'Segunda a Sexta (CAPS III atende 24h)',
+      defaultPhone: '136',
+      freeConfirmation: 'Atendimento 100% público e gratuito pelo SUS.',
+      tags: ['CAPS', 'Apoio Psicológico', 'Saúde Mental', 'SUS Grátis', 'Acolhimento'],
+    };
+  }
+
+  // 6. UBS / Posto de Saúde / AMA / PSF / Clínica da Família (Saúde & Acolhimento Inicial)
+  const isUbsOrPosto =
+    /\b(ubs|unidade b[aá]sica|posto de sa[uú]de|centro de sa[uú]de|psf|esf|ama|cl[ií]nica da fam[ií]lia|sa[uú]de da fam[ií]lia)\b/i.test(
+      name
+    ) ||
+    (/\bpolicl[ií]nica\b/i.test(name) &&
+      (/\b(municipal|estadual|regional|sus|mulher|p[uú]blica)\b/i.test(name) || hasPublicOperator));
+
+  if (isUbsOrPosto) {
+    return {
+      kind: 'ubs',
+      category: 'saude',
+      subcategory: 'UBS / Posto de Saúde Próximo (SUS)',
+      description:
+        'Unidade Básica de Saúde pública próxima ao seu CEP. Oferece consultas médicas e ginecológicas, pré-natal, preventivo (Papanicolau), testes rápidos e acolhimento em saúde mental pelo SUS.',
+      accessMode: 'Livre Demanda (Porta Aberta)',
+      defaultHours: 'Segunda a Sexta, das 07h às 17h (confirmar na unidade)',
+      defaultPhone: '136',
+      freeConfirmation: 'Atendimento público e gratuito pelo SUS.',
+      tags: ['UBS', 'Posto de Saúde', 'SUS Grátis', 'Saúde da Mulher', 'Acolhimento'],
+    };
+  }
+
+  // 7. UPA / Pronto Atendimento Público
+  const isUpa =
+    /\b(upa|unidade de pronto atendimento)\b/i.test(name) ||
+    (/\b(pronto atendimento|pronto[- ]socorro)\b/i.test(name) &&
+      (/\b(municipal|estadual|p[uú]blico|sus)\b/i.test(name) || hasPublicOperator));
+
+  if (isUpa) {
+    return {
+      kind: 'upa',
+      category: 'saude',
+      subcategory: 'UPA / Pronto Atendimento 24h (SUS)',
+      description:
+        'Pronto atendimento de urgência 100% gratuito do SUS próximo ao seu CEP para acolhimento imediato e encaminhamento médico.',
+      accessMode: 'Plantão 24h',
+      defaultHours: 'Atendimento de urgência 24 horas',
+      defaultPhone: '136',
+      freeConfirmation: 'Pronto atendimento público e gratuito pelo SUS.',
+      tags: ['UPA', 'Urgência', 'SUS Grátis', 'Plantão 24h'],
+    };
+  }
+
+  // 8. Hospitais e Maternidades Públicas / SUS / Universitárias / Santa Casa
+  const isExplicitPublicHospital =
+    /\b(hospital municipal|hospital estadual|hospital federal|hospital regional|hospital p[uú]blico|hospital universit[aá]rio|hospital das cl[ií]nicas|hospital escola|hospital da mulher|hospital materno|conjunto hospitalar|maternidade municipal|maternidade estadual|maternidade federal|maternidade p[uú]blica|maternidade escola|casa de parto|santa casa)\b/i.test(
       name
     );
-  const isUpaName = /\b(upa|pronto atendimento|pronto socorro|pronto-socorro)\b/i.test(name);
-  const isHospitalName = /\b(hospital|maternidade|santa casa|pronto-socorro|conjunto hospitalar)\b/i.test(name);
 
-  if (isUbsName) {
-    return { matched: true, kind: 'ubs' };
-  }
-  if (isUpaName) {
-    return { matched: true, kind: 'upa' };
-  }
-  if (amenity === 'hospital' || healthcare === 'hospital' || isHospitalName) {
-    return { matched: true, kind: 'hospital' };
-  }
+  const isPublicGeneralHospital =
+    (/\bhospital geral\b/i.test(name) ||
+      ((amenity === 'hospital' || healthcare === 'hospital') && hasPublicOperator));
 
-  if (
-    (amenity === 'clinic' || healthcare === 'centre' || healthcare === 'clinic') &&
-    (operatorType.includes('public') ||
-      operatorType.includes('municip') ||
-      operatorType.includes('estado') ||
-      operatorType.includes('sus') ||
-      operatorType.includes('prefeitura'))
-  ) {
-    return { matched: true, kind: 'ubs' };
+  if (isExplicitPublicHospital || isPublicGeneralHospital) {
+    return {
+      kind: 'hospital',
+      category: 'saude',
+      subcategory: 'Hospital Público / Maternidade SUS',
+      description:
+        'Hospital da rede pública / filantrópica SUS próximo ao seu CEP para atendimento médico, urgências, ginecologia, maternidade e acolhimento.',
+      accessMode: 'Plantão 24h',
+      defaultHours: 'Atendimento de urgência 24 horas pelo SUS',
+      defaultPhone: '136',
+      freeConfirmation: 'Atendimento gratuito pelo Sistema Único de Saúde (SUS).',
+      tags: ['Hospital Público', 'SUS Grátis', 'Urgência', 'Saúde da Mulher', 'Acolhimento'],
+    };
   }
 
-  return { matched: false, kind: 'ubs' };
+  // 9. ONGs / Coletivos Sem Fins Lucrativos voltados para o público feminino
+  const combinedNgoText = `${name} ${tags?.description || ''}`.toLowerCase();
+  const isWomenFocusedNgo =
+    /\b(associa[çc][aã]o (de |das )?mulheres|coletivo (de |das )?mulheres|instituto d[aeo]s? mulher\w*|casa d[aeo]s? mulher\w*|centro de apoio [àa] mulher|movimento de mulheres|rede feminina|grupo de mulheres|f[oó]rum de mulheres|casa de acolhimento .*mulher|ong .*mulher|mulher\w* .*ong|maria da penha)\b/i.test(
+      combinedNgoText
+    ) ||
+    ((tags?.office === 'ngo' || tags?.office === 'association' || amenity === 'social_facility') &&
+      /\b(mulher\w*|feminin\w*|m[aã]es?|gestant\w*|maria da penha)\b/i.test(combinedNgoText));
+
+  if (isWomenFocusedNgo) {
+    return {
+      kind: 'ong',
+      category: 'social',
+      subcategory: 'ONG Voltada para Mulheres (Gratuita)',
+      description:
+        'Organização ou coletivo gratuito voltado ao público feminino na sua região para acolhimento social, escuta, orientação de direitos e fortalecimento.',
+      accessMode: 'Livre Demanda (Porta Aberta)',
+      defaultHours: 'Confirmar horário de atendimento local',
+      freeConfirmation: 'Apoio gratuito voltado às mulheres, sem fins lucrativos.',
+      tags: ['ONG Feminina', 'Mulheres', 'Acolhimento', 'Gratuito', 'Rede Solidária'],
+    };
+  }
+
+  return null;
 }
 
 function buildAddressFromTags(
@@ -93,40 +344,23 @@ function mapOverpassElementToService(
   const distanceKm = haversineDistanceKm(userLat, userLng, lat, lng);
   if (distanceKm > MAX_PROXIMITY_KM) return null;
 
-  const { matched, kind } = isLikelyPublicHealthUnit(tags);
-  if (!matched) return null;
+  const classified = classifyFreePublicUnit(rawName, tags);
+  if (!classified) return null;
 
-  const phone = (tags.phone || tags['contact:phone'] || '').trim() || undefined;
+  const phone = (tags.phone || tags['contact:phone'] || '').trim() || classified.defaultPhone;
   const website = (tags.website || tags['contact:website'] || '').trim() || undefined;
   const neighborhood = (tags['addr:suburb'] || tags['addr:neighbourhood'] || '').trim() || undefined;
   const city = (tags['addr:city'] || location.localidade || '').trim();
   const address = buildAddressFromTags(tags, location.localidade, location.uf);
   const cep = (tags['addr:postcode'] || '').trim() || undefined;
-
-  const subcategory =
-    kind === 'ubs'
-      ? 'UBS / Posto de Saúde Próximo (SUS)'
-      : kind === 'upa'
-      ? 'UPA / Pronto Atendimento 24h (SUS)'
-      : 'Hospital / Maternidade Próxima';
-
-  const hours =
-    (tags.opening_hours || '').trim() ||
-    (kind === 'ubs'
-      ? 'Segunda a Sexta, das 07h às 17h (confirmar na unidade)'
-      : 'Atendimento de urgência 24 horas');
+  const hours = (tags.opening_hours || '').trim() || classified.defaultHours;
 
   const item: ServiceItem = {
     id: `osm-${el.type}-${el.id}`,
     name: rawName,
-    category: 'saude',
-    subcategory,
-    description:
-      kind === 'ubs'
-        ? 'Unidade Básica de Saúde próxima ao seu CEP. Oferece consultas médicas e ginecológicas, pré-natal, preventivo (Papanicolau), planejamento reprodutivo, testes rápidos, vacinas e acolhimento inicial em saúde mental pelo SUS.'
-        : kind === 'upa'
-        ? 'Pronto atendimento de urgência gratuito próximo ao seu CEP para acolhimento imediato e encaminhamento na rede pública.'
-        : 'Hospital / unidade de saúde próxima ao seu CEP para atendimento médico, urgências, ginecologia e acolhimento feminino.',
+    category: classified.category,
+    subcategory: classified.subcategory,
+    description: classified.description,
     state: location.uf,
     city,
     neighborhood,
@@ -134,21 +368,81 @@ function mapOverpassElementToService(
     cep,
     lat,
     lng,
-    phone: phone || '136',
+    phone,
     website: website && (website.startsWith('http://') || website.startsWith('https://')) ? website : undefined,
     hours,
-    accessMode: kind === 'ubs' ? 'Livre Demanda (Porta Aberta)' : 'Plantão 24h',
+    accessMode: classified.accessMode,
     requiresRegistration: false,
-    freeConfirmation: 'Atendimento público e gratuito pelo SUS (leve cartão SUS ou CPF se tiver, mas urgências atendem mesmo sem documentos).',
-    tags:
-      kind === 'ubs'
-        ? ['UBS', 'Posto de Saúde', 'SUS Grátis', 'Saúde da Mulher', 'Acolhimento']
-        : ['Hospital', 'SUS Grátis', 'Urgência', 'Saúde da Mulher'],
+    freeConfirmation: classified.freeConfirmation,
+    tags: classified.tags,
     tipsForVictim:
-      'Para emergências ou dúvidas sobre qual UBS atende seu endereço exato, ligue gratuitamente para o Disque Saúde 136.',
+      classified.defaultPhone === '180'
+        ? 'Atendimento gratuito e sigiloso. Em caso de dúvida, ligue antes para a Central 180.'
+        : classified.defaultPhone === '129'
+        ? 'Para agendar ou confirmar documentos necessários na Defensoria Pública, ligue 129.'
+        : 'Para confirmar horários ou qual unidade atende seu endereço pelo SUS, ligue gratuitamente para 136.',
   };
 
   return { item, distanceKm };
+}
+
+function buildOverpassQuery(scope: PublicSearchScope, lat: number, lng: number): string {
+  const healthBlock = `
+  nwr["amenity"="hospital"](around:9000,${lat},${lng});
+  nwr["amenity"="clinic"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Hospital|Maternidade|Cl[ií]nica da Fam[ií]lia)",i](around:7000,${lat},${lng});
+  nwr["healthcare"~"hospital|centre|clinic"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Hospital|Maternidade|Cl[ií]nica da Fam[ií]lia)",i](around:7000,${lat},${lng});`;
+
+  const socialAndLegalBlock = `
+  nwr["amenity"="social_facility"](around:10000,${lat},${lng});
+  nwr["amenity"="courthouse"](around:10000,${lat},${lng});
+  nwr["office"="government"]["name"~"(Defensoria|CRAS|CREAS|SINE|Mulher)",i](around:10000,${lat},${lng});`;
+
+  const policeBlock = `
+  nwr["amenity"="police"]["name"~"(Mulher|DEAM|DDM|Casa da Mulher)",i](around:12000,${lat},${lng});`;
+
+  const coursesBlock = `
+  nwr["amenity"~"college|school|university"]["name"~"(Instituto Federal|ETEC|Centro Vocacional)",i](around:12000,${lat},${lng});`;
+
+  const womenNgoBlock = `
+  nwr["office"~"ngo|association"]["name"~"(Mulher|Mulheres|Feminin|M[aã]e|M[aã]es|Gestant|Maria da Penha|Acolhimento|ONG)",i](around:15000,${lat},${lng});
+  nwr["amenity"="social_facility"]["name"~"(Mulher|Mulheres|Feminin|M[aã]e|M[aã]es|Casa da Mulher|CRAM|CEAM|CDCM|Acolhimento)",i](around:15000,${lat},${lng});`;
+
+  let body = `${healthBlock}\n${womenNgoBlock}`;
+  if (scope === 'psicologico') {
+    body = `${healthBlock}\n${socialAndLegalBlock}\n${womenNgoBlock}`;
+  } else if (scope === 'juridico') {
+    body = `${socialAndLegalBlock}\n${policeBlock}\n${womenNgoBlock}`;
+  } else if (scope === 'emergencia') {
+    body = `${policeBlock}\n${healthBlock}\n${socialAndLegalBlock}\n${womenNgoBlock}`;
+  } else if (scope === 'cursos') {
+    body = `${coursesBlock}\n${socialAndLegalBlock}\n${womenNgoBlock}`;
+  } else if (scope === 'geral') {
+    body = `${healthBlock}\n${socialAndLegalBlock}\n${policeBlock}\n${womenNgoBlock}`;
+  }
+
+  return `[out:json][timeout:6];\n(\n${body}\n);\nout center tags 80;\n`;
+}
+
+function getNominatimQueriesForScope(
+  scope: PublicSearchScope,
+  bairro: string | undefined,
+  city: string
+): string[] {
+  switch (scope) {
+    case 'juridico':
+      return ['Defensoria Pública', 'CREAS', 'Casa da Mulher', 'ONG Mulher'];
+    case 'emergencia':
+      return ['Delegacia da Mulher', 'UPA', 'Hospital', 'ONG Mulher'];
+    case 'cursos':
+      return ['Instituto Federal', 'SINE', 'CRAS', 'ONG Mulher'];
+    case 'psicologico':
+      return ['CAPS', bairro ? `UBS ${bairro} ${city}` : 'UBS', 'CREAS', 'ONG Mulher'];
+    case 'saude':
+      return [bairro ? `UBS ${bairro} ${city}` : 'UBS', 'Posto de Saúde', 'Hospital', 'ONG Mulher'];
+    case 'geral':
+    default:
+      return [bairro ? `UBS ${bairro} ${city}` : 'UBS', 'Hospital', 'Defensoria Pública', 'ONG Mulher'];
+  }
 }
 
 async function queryOverpass(endpoint: string, query: string): Promise<OverpassElement[]> {
@@ -162,6 +456,8 @@ async function queryOverpass(endpoint: string, query: string): Promise<OverpassE
       signal: controller.signal,
     });
     if (!res.ok) return [];
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('json')) return [];
     const data = (await res.json()) as { elements?: OverpassElement[] };
     return Array.isArray(data.elements) ? data.elements : [];
   } catch {
@@ -174,19 +470,15 @@ async function queryOverpass(endpoint: string, query: string): Promise<OverpassE
 async function queryNominatimBounded(
   location: CepInfo,
   userLat: number,
-  userLng: number
+  userLng: number,
+  scope: PublicSearchScope
 ): Promise<{ item: ServiceItem; distanceKm: number }[]> {
   const bairro = location.bairro?.trim();
-  const queries = [
-    bairro ? `UBS ${bairro} ${location.localidade}` : 'UBS',
-    'UBS',
-    'Hospital',
-    'CAPS',
-  ];
+  const queries = getNominatimQueriesForScope(scope, bairro, location.localidade);
 
-  // Tight bounding box (~9 km around the searched CEP coordinates)
-  const deltaLat = 0.082;
-  const deltaLng = 0.088;
+  // ~18 km bounding box around the searched CEP (covers urban neighborhoods AND neighboring interior towns within 30 km)
+  const deltaLat = 0.165;
+  const deltaLng = 0.175;
   const viewbox = `${(userLng - deltaLng).toFixed(4)},${(userLat + deltaLat).toFixed(4)},${(
     userLng + deltaLng
   ).toFixed(4)},${(userLat - deltaLat).toFixed(4)}`;
@@ -197,13 +489,15 @@ async function queryNominatimBounded(
   const responses = await Promise.all(
     queries.map(async (q) => {
       const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 4000);
+      const timeoutId = window.setTimeout(() => controller.abort(), 4500);
       try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=br&bounded=1&viewbox=${viewbox}&limit=10&q=${encodeURIComponent(
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&extratags=1&countrycodes=br&bounded=1&viewbox=${viewbox}&limit=10&q=${encodeURIComponent(
           q
         )}`;
         const res = await fetch(url, { signal: controller.signal });
         if (!res.ok) return [];
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('json')) return [];
         return (await res.json()) as Array<{
           place_id: number;
           display_name?: string;
@@ -213,6 +507,7 @@ async function queryNominatimBounded(
           lat: string;
           lon: string;
           address?: Record<string, string>;
+          extratags?: Record<string, string>;
         }>;
       } catch {
         return [];
@@ -232,59 +527,46 @@ async function queryNominatimBounded(
       if (distanceKm > MAX_PROXIMITY_KM) continue;
 
       const name = (r.name || r.display_name?.split(',')[0] || '').trim();
-      if (!name || name.length < 3) continue;
+      const pseudoTags: Record<string, string> = {
+        ...(r.extratags || {}),
+        ...(r.class === 'amenity' && r.type ? { amenity: r.type } : {}),
+      };
 
-      // Filter out unrelated commercial POIs returned by generic search
-      const isHealthRelated =
-        /\b(ubs|ama|upa|caps|unidade|posto|centro de sa[uú]de|hospital|maternidade|pronto|santa casa|cl[ií]nica da fam[ií]lia|casa da mulher|cram|creas)\b/i.test(
-          name
-        ) ||
-        r.type === 'hospital' ||
-        r.type === 'clinic' ||
-        r.class === 'healthcare';
-      if (!isHealthRelated) continue;
+      const classified = classifyFreePublicUnit(name, pseudoTags, r.class);
+      if (!classified) continue;
 
       const norm = name.toLowerCase();
       if (seen.has(norm)) continue;
       seen.add(norm);
 
-      const isUbs = /\b(ubs|ama|caps|unidade|posto|centro de sa[uú]de|esf|cl[ií]nica da fam[ií]lia)\b/i.test(
-        name
-      );
-      const isUpa = /\b(upa|pronto atendimento|pronto[- ]socorro)\b/i.test(name);
       const addr = r.address || {};
       const road = addr.road || '';
       const suburb = addr.suburb || addr.neighbourhood || '';
       const city = addr.city || addr.town || addr.municipality || location.localidade;
+      const phone = (r.extratags?.phone || r.extratags?.['contact:phone'] || '').trim() || classified.defaultPhone;
+      const website = (r.extratags?.website || r.extratags?.['contact:website'] || '').trim() || undefined;
 
       found.push({
         distanceKm,
         item: {
           id: `nom-${r.place_id}`,
           name,
-          category: 'saude',
-          subcategory: isUbs
-            ? 'UBS / Posto de Saúde Próximo (SUS)'
-            : isUpa
-            ? 'UPA / Pronto Atendimento 24h (SUS)'
-            : 'Hospital / Unidade de Saúde Próxima',
-          description: isUbs
-            ? 'Unidade Básica de Saúde localizada próxima ao CEP informado para acolhimento, saúde da mulher, pré-natal, preventivo e encaminhamento em saúde mental pelo SUS.'
-            : isUpa
-            ? 'Pronto atendimento de urgência gratuito próximo ao CEP informado.'
-            : 'Hospital / unidade de saúde próxima ao CEP informado para atendimento médico, urgências e acolhimento.',
+          category: classified.category,
+          subcategory: classified.subcategory,
+          description: classified.description,
           state: location.uf,
           city,
           neighborhood: suburb || undefined,
           address: [road, suburb, `${city} - ${location.uf}`].filter(Boolean).join(' · '),
           lat,
           lng,
-          phone: '136',
-          hours: isUbs ? 'Segunda a Sexta (horário UBS)' : 'Atendimento 24 horas (confirmar urgência)',
-          accessMode: isUbs ? 'Livre Demanda (Porta Aberta)' : 'Plantão 24h',
+          phone,
+          website: website && (website.startsWith('http://') || website.startsWith('https://')) ? website : undefined,
+          hours: (r.extratags?.opening_hours || '').trim() || classified.defaultHours,
+          accessMode: classified.accessMode,
           requiresRegistration: false,
-          freeConfirmation: 'Atendimento gratuito pelo SUS.',
-          tags: isUbs ? ['UBS', 'Posto de Saúde', 'SUS', 'Acolhimento'] : ['Hospital', 'SUS', 'Saúde'],
+          freeConfirmation: classified.freeConfirmation,
+          tags: classified.tags,
         },
       });
     }
@@ -294,11 +576,15 @@ async function queryNominatimBounded(
 }
 
 /**
- * Dynamically fetches real nearby UBS, Health Clinics (Postos de Saúde), UPAs and Hospitals
- * within <= 30 km of the user's CEP/city coordinates using OpenStreetMap public data.
+ * Dynamically fetches verified 100%-free public network units & free NGOs across ALL of Brazil
+ * within <= 30 km of the searched CEP/city coordinates using OpenStreetMap data.
+ * Never returns private/paid hospitals or commercial clinics.
  * Zero-PII: only queries public coordinates in memory, never persists user CEP or location.
  */
-export async function fetchNearbySusUnits(location: CepInfo | null): Promise<ServiceItem[]> {
+export async function fetchNearbySusUnits(
+  location: CepInfo | null,
+  category?: ServiceCategory | 'ongs_apoio' | 'geral'
+): Promise<ServiceItem[]> {
   if (!location || typeof window === 'undefined') return [];
 
   const coords =
@@ -308,22 +594,14 @@ export async function fetchNearbySusUnits(location: CepInfo | null): Promise<Ser
 
   if (!coords) return [];
 
-  const cacheKey = `${location.cep}|${location.uf}|${coords.lat.toFixed(4)}|${coords.lng.toFixed(4)}`;
-  const cached = nearbyHealthCache.get(cacheKey);
+  const scope = normalizePublicScope(category);
+  const cacheKey = `${location.cep}|${location.uf}|${coords.lat.toFixed(4)}|${coords.lng.toFixed(4)}|${scope}`;
+  const cached = nearbyPublicCache.get(cacheKey);
   if (cached) return cached;
 
-  // Indexed Overpass query (fast tag-based lookup without full-node regex scan)
-  const overpassQuery = `
-[out:json][timeout:6];
-(
-  nwr["amenity"="hospital"](around:8000,${coords.lat},${coords.lng});
-  nwr["amenity"="clinic"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Hospital|Maternidade|Cl[ií]nica da Fam[ií]lia)",i](around:6000,${coords.lat},${coords.lng});
-  nwr["healthcare"~"hospital|centre|clinic"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Hospital|Maternidade|Cl[ií]nica da Fam[ií]lia)",i](around:6000,${coords.lat},${coords.lng});
-);
-out center tags 80;
-`;
+  const overpassQuery = buildOverpassQuery(scope, coords.lat, coords.lng);
 
-  // Run Nominatim bounded search in parallel with Overpass so results are fast and reliable even if Overpass returns 502
+  // Run Nominatim bounded search in parallel with Overpass so results are fast and reliable nationwide
   const overpassPromise = (async () => {
     let elements = await queryOverpass('https://overpass-api.de/api/interpreter', overpassQuery);
     if (elements.length === 0) {
@@ -332,7 +610,7 @@ out center tags 80;
     return elements;
   })();
 
-  const nominatimPromise = queryNominatimBounded(location, coords.lat, coords.lng);
+  const nominatimPromise = queryNominatimBounded(location, coords.lat, coords.lng, scope);
   const [elements, nomMapped] = await Promise.all([overpassPromise, nominatimPromise]);
 
   const mapped: { item: ServiceItem; distanceKm: number }[] = [];
@@ -357,6 +635,8 @@ out center tags 80;
   mapped.sort((a, b) => a.distanceKm - b.distanceKm);
 
   const finalItems = mapped.slice(0, 20).map((m) => m.item);
-  nearbyHealthCache.set(cacheKey, finalItems);
+  nearbyPublicCache.set(cacheKey, finalItems);
   return finalItems;
 }
+
+export const fetchNearbyPublicUnits = fetchNearbySusUnits;

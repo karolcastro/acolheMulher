@@ -164,6 +164,8 @@ export const SUPPORT_NGOS: NgoItem[] = [
     area: 'saude_parto',
     areaLabel: 'Parto Humanizado Gratuito',
     coverage: 'São Paulo - SP (Zona Sul · Atende via SUS e apoio social)',
+    state: 'SP',
+    city: 'São Paulo',
     accessChannel: 'Grupos de acolhimento gratuitos e agendamento presencial',
     summary: 'Casa de parto sem fins lucrativos que oferece pré-natal acolhedor, parto humanizado com enfermeiras obstetras, doulas e apoio no pós-parto gratuitamente.',
     howTheyHelp: [
