@@ -213,12 +213,22 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
   });
 
   const matchedPreview = useMemo(() => {
+    const normalizeDedupeKey = (name: string): string =>
+      name
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/\s*[—–-]\s*unidade b[aá]sica de sa[uú]de.*$/i, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+
     const mergeUnique = (base: ServiceItem[], extra: ServiceItem[]): ServiceItem[] => {
       const seenIds = new Set<string>();
       const seenNames = new Set<string>();
       const out: ServiceItem[] = [];
       for (const item of [...base, ...extra]) {
-        const key = item.name.trim().toLowerCase();
+        const key = normalizeDedupeKey(item.name);
         if (seenIds.has(item.id) || seenNames.has(key)) continue;
         seenIds.add(item.id);
         seenNames.add(key);

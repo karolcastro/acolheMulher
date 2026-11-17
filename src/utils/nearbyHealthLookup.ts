@@ -390,6 +390,7 @@ function buildOverpassQuery(scope: PublicSearchScope, lat: number, lng: number):
   const healthBlock = `
   nwr["amenity"="hospital"](around:9000,${lat},${lng});
   nwr["amenity"="clinic"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Hospital|Maternidade|Cl[ií]nica da Fam[ií]lia)",i](around:7000,${lat},${lng});
+  nwr["amenity"="doctors"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Cl[ií]nica da Fam[ií]lia)",i](around:7000,${lat},${lng});
   nwr["healthcare"~"hospital|centre|clinic"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Hospital|Maternidade|Cl[ií]nica da Fam[ií]lia)",i](around:7000,${lat},${lng});`;
 
   const socialAndLegalBlock = `
@@ -575,9 +576,169 @@ async function queryNominatimBounded(
   return found;
 }
 
+function normalizeUnitDedupeKey(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function getPhotonQueriesForScope(
+  scope: PublicSearchScope,
+  bairro: string | undefined
+): string[] {
+  const bairroTerm = bairro?.trim();
+  switch (scope) {
+    case 'juridico':
+      return ['Defensoria Publica', 'CREAS', 'CRAS', 'Casa da Mulher'];
+    case 'emergencia':
+      return ['Delegacia da Mulher', 'UPA', 'Hospital Municipal', 'ONG Mulher'];
+    case 'cursos':
+      return ['Instituto Federal', 'SINE', 'CRAS', 'ONG Mulher'];
+    case 'psicologico':
+      return [
+        ...(bairroTerm ? [`UBS ${bairroTerm}`] : []),
+        'CAPS',
+        'UBS',
+        'Unidade Basica de Saude',
+      ];
+    case 'saude':
+      return [
+        ...(bairroTerm ? [`UBS ${bairroTerm}`] : []),
+        'UBS',
+        'Posto de Saude',
+        'Unidade Basica de Saude',
+      ];
+    case 'geral':
+    default:
+      return [
+        ...(bairroTerm ? [`UBS ${bairroTerm}`] : []),
+        'UBS',
+        'Posto de Saude',
+        'CREAS',
+      ];
+  }
+}
+
+async function queryPhotonProximity(
+  location: CepInfo,
+  userLat: number,
+  userLng: number,
+  scope: PublicSearchScope
+): Promise<{ item: ServiceItem; distanceKm: number }[]> {
+  const queries = getPhotonQueriesForScope(scope, location.bairro);
+  const found: { item: ServiceItem; distanceKm: number }[] = [];
+  const seen = new Set<string>();
+
+  const responses = await Promise.all(
+    queries.map(async (q) => {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 4500);
+      try {
+        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(
+          q
+        )}&lat=${userLat.toFixed(5)}&lon=${userLng.toFixed(5)}&limit=15`;
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) return [];
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('json')) return [];
+        const json = (await res.json()) as {
+          features?: Array<{
+            geometry?: { coordinates?: [number, number] };
+            properties?: {
+              osm_type?: string;
+              osm_id?: number;
+              osm_key?: string;
+              osm_value?: string;
+              name?: string;
+              street?: string;
+              housenumber?: string;
+              district?: string;
+              locality?: string;
+              city?: string;
+              postcode?: string;
+              countrycode?: string;
+            };
+          }>;
+        };
+        return Array.isArray(json.features) ? json.features : [];
+      } catch {
+        return [];
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    })
+  );
+
+  for (const features of responses) {
+    for (const f of features) {
+      const coords = f.geometry?.coordinates;
+      const props = f.properties;
+      if (!coords || !props || !props.name) continue;
+      if (props.countrycode && props.countrycode.toUpperCase() !== 'BR') continue;
+
+      const [lng, lat] = coords;
+      if (typeof lat !== 'number' || typeof lng !== 'number') continue;
+
+      const distanceKm = haversineDistanceKm(userLat, userLng, lat, lng);
+      if (distanceKm > MAX_PROXIMITY_KM) continue;
+
+      const name = props.name.trim();
+      const pseudoTags: Record<string, string> = {};
+      if (props.osm_key && props.osm_value) {
+        pseudoTags[props.osm_key] = props.osm_value;
+      }
+
+      const classified = classifyFreePublicUnit(name, pseudoTags, props.osm_key);
+      if (!classified) continue;
+
+      const norm = normalizeUnitDedupeKey(name);
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+
+      const streetPart = props.street
+        ? props.housenumber
+          ? `${props.street}, ${props.housenumber}`
+          : props.street
+        : '';
+      const suburb = (props.locality || props.district || '').trim();
+      const city = (props.city || location.localidade).trim();
+
+      found.push({
+        distanceKm,
+        item: {
+          id: `pho-${props.osm_type || 'N'}-${props.osm_id || norm}`,
+          name,
+          category: classified.category,
+          subcategory: classified.subcategory,
+          description: classified.description,
+          state: location.uf,
+          city,
+          neighborhood: suburb || undefined,
+          address: [streetPart, suburb, `${city} - ${location.uf}`].filter(Boolean).join(' · '),
+          cep: props.postcode || undefined,
+          lat,
+          lng,
+          phone: classified.defaultPhone,
+          hours: classified.defaultHours,
+          accessMode: classified.accessMode,
+          requiresRegistration: false,
+          freeConfirmation: classified.freeConfirmation,
+          tags: classified.tags,
+        },
+      });
+    }
+  }
+
+  return found;
+}
+
 /**
  * Dynamically fetches verified 100%-free public network units & free NGOs across ALL of Brazil
- * within <= 30 km of the searched CEP/city coordinates using OpenStreetMap data.
+ * within <= 30 km of the searched CEP/city coordinates using OpenStreetMap (Overpass + Nominatim + Photon).
  * Never returns private/paid hospitals or commercial clinics.
  * Zero-PII: only queries public coordinates in memory, never persists user CEP or location.
  */
@@ -601,7 +762,7 @@ export async function fetchNearbySusUnits(
 
   const overpassQuery = buildOverpassQuery(scope, coords.lat, coords.lng);
 
-  // Run Nominatim bounded search in parallel with Overpass so results are fast and reliable nationwide
+  // Run Overpass + Nominatim bounded + Photon proximity in parallel so spelling variants (Peri/Pery) and local UBSs always resolve fast
   const overpassPromise = (async () => {
     let elements = await queryOverpass('https://overpass-api.de/api/interpreter', overpassQuery);
     if (elements.length === 0) {
@@ -611,7 +772,12 @@ export async function fetchNearbySusUnits(
   })();
 
   const nominatimPromise = queryNominatimBounded(location, coords.lat, coords.lng, scope);
-  const [elements, nomMapped] = await Promise.all([overpassPromise, nominatimPromise]);
+  const photonPromise = queryPhotonProximity(location, coords.lat, coords.lng, scope);
+  const [elements, nomMapped, photonMapped] = await Promise.all([
+    overpassPromise,
+    nominatimPromise,
+    photonPromise,
+  ]);
 
   const mapped: { item: ServiceItem; distanceKm: number }[] = [];
   const seenNames = new Set<string>();
@@ -619,22 +785,29 @@ export async function fetchNearbySusUnits(
   for (const el of elements) {
     const res = mapOverpassElementToService(el, coords.lat, coords.lng, location);
     if (!res) continue;
-    const normName = res.item.name.toLowerCase();
+    const normName = normalizeUnitDedupeKey(res.item.name);
     if (seenNames.has(normName)) continue;
     seenNames.add(normName);
     mapped.push(res);
   }
 
   for (const nom of nomMapped) {
-    const normName = nom.item.name.toLowerCase();
+    const normName = normalizeUnitDedupeKey(nom.item.name);
     if (seenNames.has(normName)) continue;
     seenNames.add(normName);
     mapped.push(nom);
   }
 
+  for (const pho of photonMapped) {
+    const normName = normalizeUnitDedupeKey(pho.item.name);
+    if (seenNames.has(normName)) continue;
+    seenNames.add(normName);
+    mapped.push(pho);
+  }
+
   mapped.sort((a, b) => a.distanceKm - b.distanceKm);
 
-  const finalItems = mapped.slice(0, 20).map((m) => m.item);
+  const finalItems = mapped.slice(0, 24).map((m) => m.item);
   nearbyPublicCache.set(cacheKey, finalItems);
   return finalItems;
 }

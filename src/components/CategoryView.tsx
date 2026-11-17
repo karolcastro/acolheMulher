@@ -26,13 +26,24 @@ interface CategoryViewProps {
   onBackToHome: () => void;
 }
 
+function normalizeDedupeKey(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\s*[—–-]\s*unidade b[aá]sica de sa[uú]de.*$/i, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function mergeUniqueServices(base: ServiceItem[], dynamicUnits: ServiceItem[]): ServiceItem[] {
   const seenIds = new Set<string>();
   const seenNames = new Set<string>();
   const merged: ServiceItem[] = [];
 
   for (const item of [...base, ...dynamicUnits]) {
-    const normName = item.name.trim().toLowerCase();
+    const normName = normalizeDedupeKey(item.name);
     if (seenIds.has(item.id) || seenNames.has(normName)) continue;
     seenIds.add(item.id);
     seenNames.add(normName);
