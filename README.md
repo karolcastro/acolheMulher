@@ -4,7 +4,7 @@ Plataforma web responsiva e PWA que organiza o acesso a serviços gratuitos de p
 
 > **Importante:** o AcolheMulher é uma ferramenta de orientação e localização de serviços. Não substitui atendimento de emergência, avaliação profissional ou confirmação direta de disponibilidade do serviço.
 
-[Aplicação](https://github.com/karolcastro/acolheMulher) · [Código-fonte](https://github.com/karolcastro/acolheMulher) · [Guia de implantação](DEPLOY_VERCEL_SUPABASE.md) · [Arquitetura](docs/ARCHITECTURE.md) · [Banco de dados](docs/DATABASE.md) · [Privacidade e segurança](docs/SECURITY_PRIVACY.md)
+[Repositório](https://github.com/karolcastro/acolheMulher) · [Guia de implantação](DEPLOY_VERCEL_SUPABASE.md) · [Arquitetura](docs/ARCHITECTURE.md) · [Banco de dados](docs/DATABASE.md) · [Privacidade e segurança](docs/SECURITY_PRIVACY.md)
 
 ---
 
@@ -164,4 +164,4 @@ Também é possível executar `npm run lint` e `npm run build`. A existência do
 
 ## 10. Autoria e licença
 
-Projeto de impacto social desenvolvido por Karol Castro. A licença declarada pelo README anterior é MIT; confira o arquivo `LICENSE` no repositório antes de redistribuir. 
+Projeto de impacto social desenvolvido por Karol Castro. Não foi localizado um arquivo `LICENSE` na árvore atual do repositório; portanto, a licença do código não deve ser presumida como MIT até que uma licença seja adicionada explicitamente.
