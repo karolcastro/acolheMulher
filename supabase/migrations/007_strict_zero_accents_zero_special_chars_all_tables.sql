@@ -581,9 +581,17 @@ SET
 UPDATE public.partner_profiles
 SET organization_name = COALESCE(NULLIF(public.sanitize_strict_ascii_text(organization_name), ''), 'Organizacao Parceira');
 
--- 1.12 services (recria view dependente antes de alterar cep para VARCHAR(8) sem hífen e limpa 100% das colunas)
+-- 1.12 services (converte cep de CHAR(9) com hifen para VARCHAR(8) sem hifen usando USING antes de limpar demais colunas)
 DROP VIEW IF EXISTS public.vw_services_normalized;
-ALTER TABLE public.services ALTER COLUMN cep TYPE VARCHAR(8);
+ALTER TABLE public.services
+  ALTER COLUMN cep TYPE VARCHAR(8)
+  USING (
+    CASE
+      WHEN LENGTH(REGEXP_REPLACE(COALESCE(cep, ''), '[^0-9]', '', 'g')) = 8
+        THEN REGEXP_REPLACE(cep, '[^0-9]', '', 'g')
+      ELSE NULL
+    END
+  );
 
 UPDATE public.services
 SET
@@ -828,7 +836,7 @@ BEGIN
   NEW.category := LOWER(REGEXP_REPLACE(COALESCE(NEW.category, 'social'), '[^a-z_]', '', 'g'));
   NEW.subcategory := COALESCE(NULLIF(public.sanitize_strict_ascii_text(NEW.subcategory), ''), 'Atendimento Gratuito');
   NEW.description := COALESCE(NULLIF(public.sanitize_strict_ascii_text(NEW.description), ''), 'Atendimento gratuito');
-  NEW.state := NULLIF(UPPER(REGEXP_REPLACE(COALESCE(NEW.state, ''), '[^A-Za-z]', '', 'g')), '');
+  NEW.state := NULLIF(LEFT(UPPER(REGEXP_REPLACE(COALESCE(NEW.state, ''), '[^A-Za-z]', '', 'g')), 2), '');
   NEW.city := NULLIF(public.sanitize_strict_ascii_text(REGEXP_REPLACE(COALESCE(NEW.city, ''), '[0-9]+', ' ', 'g')), '');
   NEW.neighborhood := NULLIF(public.sanitize_strict_ascii_text(NEW.neighborhood), '');
   NEW.address := NULLIF(public.sanitize_strict_ascii_text(NEW.address), '');
@@ -867,7 +875,7 @@ BEGIN
   NEW.area := LOWER(REGEXP_REPLACE(COALESCE(NEW.area, 'acolhimento_protecao'), '[^a-z_]', '', 'g'));
   NEW.area_label := LEFT(COALESCE(NULLIF(public.sanitize_strict_ascii_text(NEW.area_label), ''), 'Apoio Gratuito'), 80);
   NEW.coverage := LEFT(COALESCE(NULLIF(public.sanitize_strict_ascii_text(NEW.coverage), ''), 'Todo o Brasil'), 140);
-  NEW.state := NULLIF(UPPER(REGEXP_REPLACE(COALESCE(NEW.state, ''), '[^A-Za-z]', '', 'g')), '');
+  NEW.state := NULLIF(LEFT(UPPER(REGEXP_REPLACE(COALESCE(NEW.state, ''), '[^A-Za-z]', '', 'g')), 2), '');
   NEW.city := NULLIF(LEFT(public.sanitize_strict_ascii_text(REGEXP_REPLACE(COALESCE(NEW.city, ''), '[0-9]+', ' ', 'g')), 80), '');
   NEW.summary := LEFT(COALESCE(NULLIF(public.sanitize_strict_ascii_text(NEW.summary), ''), 'Atendimento gratuito para mulheres'), 600);
   v_help := public.sanitize_strict_ascii_array(NEW.how_they_help);
@@ -898,7 +906,7 @@ BEGIN
     NEW.label := COALESCE(NULLIF(public.sanitize_strict_ascii_text(NEW.label), ''), 'Categoria');
     NEW.description := COALESCE(NULLIF(public.sanitize_strict_ascii_text(NEW.description), ''), 'Atendimento gratuito');
   ELSIF TG_TABLE_NAME = 'dim_regions' THEN
-    NEW.state_code := UPPER(REGEXP_REPLACE(COALESCE(NEW.state_code, 'BR'), '[^A-Za-z]', '', 'g'));
+    NEW.state_code := LEFT(UPPER(REGEXP_REPLACE(COALESCE(NEW.state_code, 'BR'), '[^A-Za-z]', '', 'g')), 2);
     NEW.state_name := COALESCE(NULLIF(public.sanitize_strict_ascii_text(NEW.state_name), ''), 'Brasil');
     NEW.macro_region := COALESCE(NULLIF(public.sanitize_strict_ascii_text(NEW.macro_region), ''), 'Nacional');
     NEW.city_name := COALESCE(NULLIF(public.sanitize_strict_ascii_text(REGEXP_REPLACE(NEW.city_name, '[0-9]+', ' ', 'g')), ''), 'Nacional');
