@@ -111,6 +111,16 @@ const SECTION_META: Record<
   },
 };
 
+interface AiTriageResult {
+  primaryCategory: keyof typeof SECTION_META;
+  urgency: 'imediata' | 'prioritaria' | 'orientacao';
+  empathyResponse: string;
+  safetySteps: string[];
+  recommendedIds: string[];
+  recommendationReason: string;
+  model?: string;
+}
+
 export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
   currentLocation,
   selectedNeed,
@@ -132,6 +142,9 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
   const [needInput, setNeedInput] = useState('');
   const [unclearNotice, setUnclearNotice] = useState<string | null>(null);
   const [showAllNearby, setShowAllNearby] = useState(false);
+  const [aiTriageResult, setAiTriageResult] = useState<AiTriageResult | null>(null);
+  const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
+  const [aiFallbackNotice, setAiFallbackNotice] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -147,17 +160,70 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     }
   }, [currentLocation, selectedNeed]);
 
-  const handleNeedReply = (
-    rawText: string,
-    sourceChannel: DemandAccessChannel = 'triage_agent'
-  ) => {
-    const trimmed = rawText.trim();
-    if (!trimmed) {
-      setUnclearNotice('Me diga em poucas palavras o que você procura ou toque em uma das opções abaixo.');
-      return;
+  const buildRagContext = () => {
+    const rankedServices = sortServicesByCepProximity(
+      [...regionalServices, ...nationalServices, ...nearbySusUnits],
+      currentLocation
+    );
+    const seen = new Set<string>();
+    const items: Array<{
+      id: string;
+      kind: 'service' | 'ngo';
+      name: string;
+      category: string;
+      subcategory?: string;
+      isNationalOnline?: boolean;
+      distanceKm?: number | null;
+      freeConfirmation?: string;
+      summary?: string;
+    }> = [];
+
+    for (const r of rankedServices) {
+      if (seen.has(r.service.id)) continue;
+      seen.add(r.service.id);
+      items.push({
+        id: r.service.id,
+        kind: 'service',
+        name: r.service.name,
+        category: r.service.category,
+        subcategory: r.service.subcategory,
+        isNationalOnline: r.service.isNationalOnline,
+        distanceKm: r.distanceKm,
+        freeConfirmation: r.service.freeConfirmation,
+        summary: r.service.description,
+      });
+      if (items.length >= 16) break;
     }
 
-    setUnclearNotice(null);
+    const userUf = currentLocation?.uf?.trim().toUpperCase();
+    const sortedNgos = [...ngos].sort((a, b) => {
+      const aLocal = userUf && a.state?.toUpperCase() === userUf ? 0 : 1;
+      const bLocal = userUf && b.state?.toUpperCase() === userUf ? 0 : 1;
+      return aLocal - bLocal;
+    });
+
+    for (const ngo of sortedNgos.slice(0, 8)) {
+      if (seen.has(ngo.id)) continue;
+      seen.add(ngo.id);
+      items.push({
+        id: ngo.id,
+        kind: 'ngo',
+        name: ngo.name,
+        category: 'ongs_apoio',
+        subcategory: ngo.areaLabel,
+        isNationalOnline: !ngo.state,
+        freeConfirmation: ngo.privacyNote,
+        summary: ngo.summary,
+      });
+    }
+
+    return items;
+  };
+
+  const runDeterministicFallback = (
+    trimmed: string,
+    sourceChannel: DemandAccessChannel
+  ) => {
     const norm = normalizeText(trimmed);
     const detected = detectSectionIntent(trimmed);
 
@@ -178,7 +244,6 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       return;
     }
 
-    // Fallback keyword match against existing services/NGOs
     const allServices = [...regionalServices, ...nationalServices];
     const matchedService = allServices.find((s) =>
       normalizeText(`${s.name} ${s.subcategory} ${s.description} ${(s.tags || []).join(' ')}`).includes(norm)
@@ -214,6 +279,76 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     );
   };
 
+  const handleNeedReply = async (
+    rawText: string,
+    sourceChannel: DemandAccessChannel = 'triage_agent'
+  ) => {
+    const trimmed = rawText.trim();
+    if (!trimmed) {
+      setUnclearNotice('Me diga em poucas palavras o que você procura ou toque em uma das opções abaixo.');
+      return;
+    }
+
+    setUnclearNotice(null);
+    setAiFallbackNotice(null);
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setAiTriageResult(null);
+      setAiFallbackNotice('Modo offline ativo: exibindo triagem direta sem necessidade de internet.');
+      runDeterministicFallback(trimmed, sourceChannel);
+      return;
+    }
+
+    setIsAnalyzingAi(true);
+    try {
+      const response = await fetch('/api/triage-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: trimmed,
+          location: currentLocation
+            ? { city: currentLocation.localidade, state: currentLocation.uf }
+            : undefined,
+          catalogContext: buildRagContext(),
+        }),
+      });
+
+      if (!response.ok) {
+        let errMessage = 'Triagem inteligente indisponível no momento; exibindo classificação direta.';
+        try {
+          const errBody = (await response.json()) as { error?: string };
+          if (errBody?.error) errMessage = errBody.error;
+        } catch {
+          // Keep default fallback notice
+        }
+        setAiTriageResult(null);
+        setAiFallbackNotice(errMessage);
+        runDeterministicFallback(trimmed, sourceChannel);
+        return;
+      }
+
+      const aiData = (await response.json()) as AiTriageResult;
+      const resolvedCategory =
+        aiData.primaryCategory && aiData.primaryCategory in SECTION_META
+          ? aiData.primaryCategory
+          : 'ongs_apoio';
+
+      setAiTriageResult({
+        ...aiData,
+        primaryCategory: resolvedCategory,
+      });
+      setNeedInput('');
+      setShowAllNearby(false);
+      onUpdateNeed(resolvedCategory, trimmed, sourceChannel);
+    } catch {
+      setAiTriageResult(null);
+      setAiFallbackNotice('Sem resposta do servidor de IA agora; exibindo classificação direta.');
+      runDeterministicFallback(trimmed, sourceChannel);
+    } finally {
+      setIsAnalyzingAi(false);
+    }
+  };
+
   const {
     isListening,
     isProcessingVoice,
@@ -227,7 +362,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     lang: 'pt-BR',
     onFinalTranscript: (transcript) => {
       setNeedInput(transcript);
-      handleNeedReply(transcript, 'web_voice');
+      void handleNeedReply(transcript, 'web_voice');
     },
   });
 
@@ -424,6 +559,24 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
 
   const hasResolvedView = Boolean(activeCategoryKey || showAllNearby);
 
+  const ragRecommendations = useMemo(() => {
+    if (!aiTriageResult || aiTriageResult.recommendedIds.length === 0) {
+      return { services: [] as RankedServiceItem[], ngos: [] as typeof ngos };
+    }
+    const idOrder = new Map(aiTriageResult.recommendedIds.map((id, idx) => [id, idx]));
+    const allServices = [...regionalServices, ...nationalServices, ...nearbySusUnits];
+    const matchedServices = sortServicesByCepProximity(
+      allServices.filter((s) => idOrder.has(s.id)),
+      currentLocation
+    ).sort((a, b) => (idOrder.get(a.service.id) ?? 99) - (idOrder.get(b.service.id) ?? 99));
+
+    const matchedNgos = ngos
+      .filter((n) => idOrder.has(n.id))
+      .sort((a, b) => (idOrder.get(a.id) ?? 99) - (idOrder.get(b.id) ?? 99));
+
+    return { services: matchedServices, ngos: matchedNgos };
+  }, [aiTriageResult, regionalServices, nationalServices, nearbySusUnits, ngos, currentLocation]);
+
   const locationLabel = currentLocation
     ? formatLocationDisplay(currentLocation)
     : 'todo o Brasil';
@@ -548,7 +701,9 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                     Você procurou: "{lastUserNeedText}"
                   </span>
                 )}
-                {activeCategoryKey
+                {aiTriageResult?.empathyResponse
+                  ? aiTriageResult.empathyResponse
+                  : activeCategoryKey
                   ? SECTION_META[activeCategoryKey].empathyMessage
                   : `Mostrando apenas opções 100% gratuitas (ofertas online primeiro + rede pública e ONGs em até 30 km de ${locationLabel}):`}
               </p>
@@ -561,6 +716,8 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
             type="button"
             onClick={() => {
               setUnclearNotice(null);
+              setAiTriageResult(null);
+              setAiFallbackNotice(null);
               setShowAllNearby(false);
               onUpdateNeed(null, null);
             }}
@@ -578,7 +735,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              handleNeedReply(needInput);
+              void handleNeedReply(needInput);
             }}
             className="flex items-center bg-purple-50/70 rounded-xl border border-purple-200 p-1 focus-within:ring-2 focus-within:ring-pink-600 focus-within:bg-white transition-all gap-1"
           >
@@ -589,25 +746,28 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
               onChange={(e) => {
                 setNeedInput(e.target.value);
                 setUnclearNotice(null);
+                setAiFallbackNotice(null);
                 clearSpeechError();
               }}
               placeholder={
-                isProcessingVoice
+                isAnalyzingAi
+                  ? 'Analisando seu pedido com acolhimento...'
+                  : isProcessingVoice
                   ? 'Entendendo o que você falou...'
                   : isListening
                   ? speechMode === 'recorder'
                     ? 'Gravando... fale e toque no botão vermelho para parar'
                     : 'Ouvindo o que você precisa...'
-                  : 'Ex: preciso de psicóloga, medida protetiva, exame grátis...'
+                  : 'Conte em suas palavras: ex. estou com medo em casa, exame gratis, psicologa...'
               }
-              maxLength={80}
+              maxLength={240}
               className="flex-1 bg-transparent px-3 py-2 text-xs sm:text-sm text-slate-900 placeholder-slate-500 focus:outline-none min-w-0"
               aria-label="Diga ou digite o tipo de apoio que você procura"
             />
 
             <button
               type="button"
-              disabled={isProcessingVoice}
+              disabled={isProcessingVoice || isAnalyzingAi}
               onClick={() => (isListening ? stopListening() : startListening())}
               aria-label={isListening ? 'Parar gravação' : 'Falar o que você procura'}
               className={`min-h-[38px] min-w-[38px] px-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shrink-0 ${
@@ -627,11 +787,15 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
 
             <button
               type="submit"
-              disabled={isProcessingVoice}
-              className="min-h-[38px] px-3.5 rounded-lg bg-gradient-to-r from-pink-600 to-purple-700 hover:from-pink-700 hover:to-purple-800 text-white text-xs font-semibold flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-all"
+              disabled={isProcessingVoice || isAnalyzingAi}
+              className="min-h-[38px] px-3.5 rounded-lg bg-gradient-to-r from-pink-600 to-purple-700 hover:from-pink-700 hover:to-purple-800 text-white text-xs font-semibold flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-all disabled:opacity-70"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>Responder</span>
+              {isAnalyzingAi ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
+              <span>{isAnalyzingAi ? 'Analisando...' : 'Responder'}</span>
             </button>
           </form>
 
@@ -647,9 +811,16 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
             </p>
           )}
 
-          {(unclearNotice || speechError) && (
+          {isAnalyzingAi && (
+            <p className="text-[11px] text-purple-900 font-medium flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-pink-600 animate-pulse" />
+              <span>Classificando sua necessidade e buscando opções gratuitas reais na rede...</span>
+            </p>
+          )}
+
+          {(unclearNotice || speechError || aiFallbackNotice) && (
             <p className="text-xs text-red-700 font-medium leading-snug">
-              {unclearNotice || speechError}
+              {unclearNotice || speechError || aiFallbackNotice}
             </p>
           )}
 
@@ -663,6 +834,8 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                   type="button"
                   onClick={() => {
                     setUnclearNotice(null);
+                    setAiTriageResult(null);
+                    setAiFallbackNotice(null);
                     onUpdateNeed(key, item.label, 'triage_agent');
                   }}
                   className={`min-h-[40px] px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-2 text-left transition-all ${item.buttonClass}`}
@@ -676,6 +849,8 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
               type="button"
               onClick={() => {
                 setUnclearNotice(null);
+                setAiTriageResult(null);
+                setAiFallbackNotice(null);
                 setShowAllNearby(true);
                 void recordAnonymousSearchDemand('geral', currentLocation, 'triage_agent');
               }}
@@ -697,7 +872,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
             </div>
           )}
 
-          {activeCategoryKey === 'emergencia' && (
+          {(activeCategoryKey === 'emergencia' || aiTriageResult?.urgency === 'imediata') && (
             <div className="flex flex-wrap items-center gap-2">
               <a
                 href="tel:180"
@@ -713,6 +888,86 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                 <Phone className="w-3.5 h-3.5" />
                 <span>Polícia 190</span>
               </a>
+            </div>
+          )}
+
+          {aiFallbackNotice && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2 text-[11px] text-amber-950 font-medium">
+              {aiFallbackNotice}
+            </div>
+          )}
+
+          {aiTriageResult && (
+            <div className="rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50/80 to-pink-50/50 p-3.5 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-[11px] font-bold text-purple-950 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-pink-600 shrink-0" />
+                  <span>Triagem Inteligente · Passos Recomendados</span>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide ${
+                    aiTriageResult.urgency === 'imediata'
+                      ? 'bg-red-100 text-red-900 border border-red-200'
+                      : aiTriageResult.urgency === 'prioritaria'
+                      ? 'bg-purple-100 text-purple-950 border border-purple-200'
+                      : 'bg-blue-100 text-blue-950 border border-blue-200'
+                  }`}
+                >
+                  {aiTriageResult.urgency === 'imediata'
+                    ? 'Prioridade Imediata'
+                    : aiTriageResult.urgency === 'prioritaria'
+                    ? 'Apoio Prioritário'
+                    : 'Orientação Gratuita'}
+                </span>
+              </div>
+
+              {aiTriageResult.safetySteps.length > 0 && (
+                <ul className="space-y-1 text-xs text-slate-800 list-disc pl-4">
+                  {aiTriageResult.safetySteps.map((step, idx) => (
+                    <li key={idx}>{step}</li>
+                  ))}
+                </ul>
+              )}
+
+              <p className="text-[11px] text-purple-900 font-medium">
+                {aiTriageResult.recommendationReason}
+              </p>
+
+              {(ragRecommendations.services.length > 0 || ragRecommendations.ngos.length > 0) && (
+                <div className="space-y-2 pt-1">
+                  <div className="text-[11px] font-bold text-pink-800">
+                    Destaques selecionados para o seu caso (100% gratuitos):
+                  </div>
+                  {ragRecommendations.services.map(renderRankedRow)}
+                  {ragRecommendations.ngos.map((ngo) => (
+                    <div
+                      key={`rag-${ngo.id}`}
+                      className="bg-white rounded-xl border border-purple-200 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                    >
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="text-[11px] font-semibold text-pink-700 truncate">
+                          ONG Recomendada · {ngo.areaLabel}
+                        </div>
+                        <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                          {ngo.name}
+                        </div>
+                        <div className="text-[11px] text-slate-600 truncate">
+                          {ngo.accessChannel}
+                        </div>
+                      </div>
+                      <a
+                        href={ngo.websiteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="min-h-[36px] inline-flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-pink-600 to-purple-700 text-white text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0"
+                      >
+                        <span>Acessar ONG</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

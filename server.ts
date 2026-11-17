@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import cnesPublicHandler from './api/cnes-public.ts';
+import triageAiHandler from './api/triage-ai.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,6 +65,10 @@ async function startServer() {
 
   app.get('/api/cnes-public', (req: Request, res: Response) => {
     void cnesPublicHandler(req, res);
+  });
+
+  app.post('/api/triage-ai', (req: Request, res: Response) => {
+    void triageAiHandler(req, res);
   });
 
   app.post('/api/transcribe', async (req: Request, res: Response) => {
