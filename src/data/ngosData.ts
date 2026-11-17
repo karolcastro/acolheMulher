@@ -100,15 +100,36 @@ export const SUPPORT_NGOS: NgoItem[] = [
     relatedCategories: ['juridico', 'psicologico', 'emergencia', 'saude']
   },
   {
+    id: 'ngo-odara-ba',
+    name: 'Odara — Instituto da Mulher Negra (Salvador e Chapada Diamantina)',
+    organization: 'Instituto Odara · Rede de Mulheres na Bahia',
+    featured: true,
+    area: 'acolhimento_protecao',
+    areaLabel: 'Direitos, Saúde & Acolhimento (BA)',
+    coverage: 'Bahia (Salvador, Chapada Diamantina e interior baiano)',
+    state: 'BA',
+    city: 'Salvador e Chapada Diamantina',
+    accessChannel: 'Projetos territoriais gratuitos e contato institucional pelo site',
+    summary: 'Organização feminista baiana com atuação ativa em Salvador e no interior da Chapada Diamantina, promovendo saúde da mulher, justiça reprodutiva, enfrentamento à violência e redes de apoio comunitário.',
+    howTheyHelp: [
+      'Acolhimento, formação de redes comunitárias e orientação de direitos para mulheres na Bahia',
+      'Atuação territorial em municípios da Chapada Diamantina e comunidades rurais',
+      'Defesa da saúde integral, direitos sexuais, reprodutivos e combate à violência'
+    ],
+    websiteUrl: 'https://institutoodara.org.br',
+    privacyNote: 'Atuação social sem fins lucrativos voltada ao fortalecimento de mulheres negras, periféricas e rurais.',
+    relatedCategories: ['saude', 'psicologico', 'juridico', 'emergencia', 'cursos']
+  },
+  {
     id: 'ngo-tamojuntas',
     name: 'Organização TamoJuntas',
     organization: 'Coletivo Nacional TamoJuntas',
     featured: true,
     area: 'psicologico_juridico',
     areaLabel: 'Assessoria Jurídica & Social',
-    coverage: 'Nacional (Forte atuação no Nordeste e online)',
+    coverage: 'Bahia, Nordeste e atendimento online em todo o Brasil',
     accessChannel: 'Solicitação gratuita pelo site',
-    summary: 'Assessoria gratuita jurídica, psicológica e assistencial feita por mulheres, com atenção especial a mulheres negras, periféricas e mães solo.',
+    summary: 'Assessoria gratuita jurídica, psicológica e assistencial feita por mulheres, com atenção especial a mulheres negras, periféricas, interioranas e mães solo.',
     howTheyHelp: [
       'Acompanhamento jurídico em linguagem simples e acessível',
       'Acolhimento psicológico e rodas de apoio',
@@ -116,7 +137,7 @@ export const SUPPORT_NGOS: NgoItem[] = [
     ],
     websiteUrl: 'https://tamojuntas.org.br',
     privacyNote: 'Atuação focada em acolhimento interseccional sem termos técnicos complicados.',
-    relatedCategories: ['juridico', 'psicologico']
+    relatedCategories: ['juridico', 'psicologico', 'emergencia']
   },
   {
     id: 'ngo-americas-amigas',

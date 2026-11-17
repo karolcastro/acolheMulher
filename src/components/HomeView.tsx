@@ -283,11 +283,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   currentLocation={currentLocation}
                   selectedNeed={selectedNeed}
                   lastUserNeedText={lastUserNeedText}
-                  onUpdateNeed={(section, userText) => {
+                  onUpdateNeed={(section, userText, channel = 'triage_agent') => {
                     setSelectedNeed(section);
                     setLastUserNeedText(userText ?? null);
                     if (section) {
-                      void recordAnonymousSearchDemand(section, currentLocation, 'triage_agent');
+                      void recordAnonymousSearchDemand(section, currentLocation, channel);
                     }
                   }}
                   onOpenSection={(section) => handleOpenSection(section, 'triage_agent')}

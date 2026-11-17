@@ -3,6 +3,7 @@ import express, { type Request, type Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import cnesPublicHandler from './api/cnes-public.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,6 +60,10 @@ async function startServer() {
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true });
+  });
+
+  app.get('/api/cnes-public', (req: Request, res: Response) => {
+    void cnesPublicHandler(req, res);
   });
 
   app.post('/api/transcribe', async (req: Request, res: Response) => {

@@ -352,29 +352,49 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
       const neighborhood = (data.bairro || geoExtra.fallbackData?.neighborhood || '').trim();
       const estimated = estimateCoordinatesForCepAndCity(formatted, city, uf);
 
+      // Ignore BrasilAPI's bogus Praça da Sé coordinate returned for unrelated São Paulo CEPs
+      const isBogusPracaDaSeCoord =
+        typeof geoExtra.lat === 'number' &&
+        typeof geoExtra.lng === 'number' &&
+        !spokenDigits.startsWith('010') &&
+        Math.abs(geoExtra.lat - -23.5475) < 0.005 &&
+        Math.abs(geoExtra.lng - -46.63611) < 0.005;
+
+      const validBrasilApiCoords =
+        typeof geoExtra.lat === 'number' &&
+        typeof geoExtra.lng === 'number' &&
+        !isBogusPracaDaSeCoord
+          ? { lat: geoExtra.lat, lng: geoExtra.lng }
+          : null;
+
       // IMPORTANT:
-      // - For street-level CEPs in large cities, BrasilAPI often returns the city center (e.g. Praça da Sé).
-      //   Geocode street/bairro via Nominatim first so every CEP searches its exact neighborhood.
-      // - For single-CEP interior towns (street === '' && neighborhood === '', e.g. 46690-000 Abaíra),
-      //   use BrasilAPI's city coords or Nominatim city geocoding (NEVER fall back to the state capital!).
+      // - For street-level CEPs, geocode street/bairro via Nominatim first so every CEP searches its exact neighborhood.
+      // - If Nominatim street/bairro isn't found, use valid BrasilAPI coords or geocode the exact city+UF (never default an interior town to a capital).
       const geocodedStreetOrBairro = await geocodeCepAddress(street, neighborhood, city, uf);
       const geocodedCity =
-        !geocodedStreetOrBairro && typeof geoExtra.lat !== 'number' && city && uf
+        !geocodedStreetOrBairro && !validBrasilApiCoords && city && uf
           ? await geocodeBrazilPlace(`${city}, ${uf}, Brasil`)
           : null;
 
       const resolvedLat =
         geocodedStreetOrBairro?.lat ??
-        (street || neighborhood ? estimated?.lat : undefined) ??
-        geoExtra.lat ??
+        (spokenDigits.startsWith('0') ? estimated?.lat : undefined) ??
+        validBrasilApiCoords?.lat ??
         geocodedCity?.lat ??
         estimated?.lat;
       const resolvedLng =
         geocodedStreetOrBairro?.lng ??
-        (street || neighborhood ? estimated?.lng : undefined) ??
-        geoExtra.lng ??
+        (spokenDigits.startsWith('0') ? estimated?.lng : undefined) ??
+        validBrasilApiCoords?.lng ??
         geocodedCity?.lng ??
         estimated?.lng;
+
+      const rawIbge =
+        typeof data.ibge === 'string'
+          ? data.ibge.replace(/\D/g, '')
+          : typeof geoExtra.fallbackData?.ibge === 'string'
+          ? geoExtra.fallbackData.ibge.replace(/\D/g, '')
+          : '';
 
       return {
         cepInfo: {
@@ -384,6 +404,7 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
           localidade: city,
           uf,
           ddd: data.ddd,
+          ibge: rawIbge.length >= 6 ? rawIbge : undefined,
           lat: resolvedLat,
           lng: resolvedLng,
         },
@@ -446,6 +467,7 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
           if (cityObj?.nome && ufSigla) {
             const geocoded = await geocodeBrazilPlace(`${cityObj.nome}, ${ufSigla}, Brasil`);
             const estimated = estimateCoordinatesForCepAndCity(undefined, cityObj.nome, ufSigla);
+            const rawIbge = cityObj?.id ? String(cityObj.id).replace(/\D/g, '') : '';
             return {
               cepInfo: {
                 cep: '00000-000',
@@ -453,6 +475,7 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
                 bairro: '',
                 localidade: cityObj.nome,
                 uf: ufSigla,
+                ibge: rawIbge.length >= 6 ? rawIbge : undefined,
                 lat: geocoded?.lat ?? estimated?.lat,
                 lng: geocoded?.lng ?? estimated?.lng,
               },

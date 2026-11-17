@@ -1,4 +1,4 @@
-import { AppSection, CepInfo, ServiceCategory } from '../types';
+import { AppSection, CepInfo, ServiceCategory, ServiceItem } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 export type DemandTopicKey =
@@ -15,6 +15,8 @@ export type DemandAccessChannel =
   | 'web_voice'
   | 'triage_agent'
   | 'category_card'
+  | 'category_filter'
+  | 'ongs_directory'
   | 'pwa_offline'
   | 'widget_ngo';
 
@@ -44,6 +46,7 @@ const VALID_TOPIC_KEYS = new Set<DemandTopicKey>([
 
 let lastRecordedSignature = '';
 let lastRecordedAt = 0;
+const syncedDiscoveredNgoKeys = new Set<string>();
 
 export function mapSectionToTopicKey(
   section?: AppSection | ServiceCategory | 'geral' | null
@@ -56,7 +59,7 @@ export function mapSectionToTopicKey(
   return 'geral';
 }
 
-function sanitizeRegion(location?: CepInfo | null): { state: string; city: string } {
+export function sanitizeRegionForAnalytics(location?: CepInfo | null): { state: string; city: string } {
   if (!location) {
     return { state: 'BR', city: 'Nacional' };
   }
@@ -97,12 +100,12 @@ export async function recordAnonymousSearchDemand(
   }
 
   const topicKey = mapSectionToTopicKey(section);
-  const { state, city } = sanitizeRegion(location);
+  const { state, city } = sanitizeRegionForAnalytics(location);
   const signature = `${topicKey}|${state}|${city}|${channel}`;
   const now = Date.now();
 
-  // Deduplicate rapid consecutive clicks for the exact same grain within 5 seconds
-  if (signature === lastRecordedSignature && now - lastRecordedAt < 5000) {
+  // Guard only against accidental simultaneous double-fire within 800ms
+  if (signature === lastRecordedSignature && now - lastRecordedAt < 800) {
     return;
   }
 
@@ -129,24 +132,69 @@ export async function recordAnonymousSearchDemand(
   }
 }
 
+/**
+ * Registers a newly discovered women-focused NGO into public.ngos without duplicates
+ * when Supabase is connected (uses register_ngo_candidate RPC with osm_discovery source).
+ */
+export async function syncDiscoveredNgoToDatabase(item: ServiceItem): Promise<void> {
+  if (!isSupabaseConfigured || !supabase || item.category !== 'social') {
+    return;
+  }
+
+  const dedupeKey = `${item.name.toLowerCase().trim()}|${item.state || ''}|${item.city || ''}`;
+  if (syncedDiscoveredNgoKeys.has(dedupeKey)) {
+    return;
+  }
+  syncedDiscoveredNgoKeys.add(dedupeKey);
+
+  try {
+    await supabase.rpc('register_ngo_candidate', {
+      p_name: item.name,
+      p_organization: item.name,
+      p_area: 'acolhimento_protecao',
+      p_area_label: item.subcategory || 'ONG Voltada para Mulheres',
+      p_coverage: [item.city, item.state].filter(Boolean).join(' - ') || 'Brasil',
+      p_state: item.state ?? null,
+      p_city: item.city ?? null,
+      p_summary: item.description || 'Organização comunitária gratuita voltada ao acolhimento de mulheres.',
+      p_how_they_help: [item.freeConfirmation || 'Apoio gratuito voltado ao público feminino.'],
+      p_access_channel: item.phone ? `Telefone/Atendimento: ${item.phone}` : 'Atendimento presencial local',
+      p_website_url: item.website || '',
+      p_privacy_note: item.address || 'Atendimento gratuito local.',
+      p_related_categories: ['psicologico', 'juridico', 'emergencia'],
+      p_is_free_confirmed: true,
+      p_source_type: 'osm_discovery',
+    });
+  } catch {
+    // Non-blocking
+  }
+}
+
 export async function fetchRecentDemandStats(limit = 24): Promise<{
   rows: DemandStatRow[];
+  totalSearches: number;
   isStarSchema: boolean;
   error: string | null;
 }> {
   if (!isSupabaseConfigured || !supabase) {
-    return { rows: [], isStarSchema: false, error: null };
+    return { rows: [], totalSearches: 0, isStarSchema: false, error: null };
   }
 
   try {
-    const starQuery = await supabase
-      .from('vw_star_search_demand')
-      .select(
-        'fact_id, demand_date, topic_key, topic_label, state_code, state_name, macro_region, city_name, channel_key, channel_label, search_count'
-      )
-      .order('demand_date', { ascending: false })
-      .order('search_count', { ascending: false })
-      .limit(limit);
+    const [starQuery, totalsQuery] = await Promise.all([
+      supabase
+        .from('vw_star_search_demand')
+        .select(
+          'fact_id, demand_date, topic_key, topic_label, state_code, state_name, macro_region, city_name, channel_key, channel_label, search_count'
+        )
+        .order('demand_date', { ascending: false })
+        .order('search_count', { ascending: false })
+        .limit(limit),
+      supabase
+        .from('vw_star_demand_totals')
+        .select('total_searches')
+        .maybeSingle(),
+    ]);
 
     if (!starQuery.error && Array.isArray(starQuery.data)) {
       const mapped: DemandStatRow[] = starQuery.data.map((row: Record<string, unknown>) => ({
@@ -162,7 +210,19 @@ export async function fetchRecentDemandStats(limit = 24): Promise<{
         channel_label: row.channel_label ? String(row.channel_label) : undefined,
         search_count: Number(row.search_count ?? 1),
       }));
-      return { rows: mapped, isStarSchema: true, error: null };
+
+      const fallbackSum = mapped.reduce((acc, r) => acc + r.search_count, 0);
+      const totalFromView =
+        !totalsQuery.error && totalsQuery.data && typeof totalsQuery.data.total_searches === 'number'
+          ? Number(totalsQuery.data.total_searches)
+          : fallbackSum;
+
+      return {
+        rows: mapped,
+        totalSearches: totalFromView,
+        isStarSchema: true,
+        error: null,
+      };
     }
 
     const legacyQuery = await supabase
@@ -175,21 +235,28 @@ export async function fetchRecentDemandStats(limit = 24): Promise<{
     if (legacyQuery.error) {
       return {
         rows: [],
+        totalSearches: 0,
         isStarSchema: false,
-        error: 'Execute os scripts SQL 003 e 004 no Supabase para habilitar o Star Schema.',
+        error: 'Execute os scripts SQL 004 e 005 no Supabase para habilitar o banco completo e o Star Schema.',
       };
     }
 
+    const legacyRows = Array.isArray(legacyQuery.data) ? (legacyQuery.data as DemandStatRow[]) : [];
+    const legacySum = legacyRows.reduce((acc, r) => acc + Number(r.search_count ?? 0), 0);
+
     return {
-      rows: Array.isArray(legacyQuery.data) ? (legacyQuery.data as DemandStatRow[]) : [],
+      rows: legacyRows,
+      totalSearches: legacySum,
       isStarSchema: false,
       error: null,
     };
   } catch {
     return {
       rows: [],
+      totalSearches: 0,
       isStarSchema: false,
       error: 'Não foi possível consultar as estatísticas agregadas agora.',
     };
   }
 }
+

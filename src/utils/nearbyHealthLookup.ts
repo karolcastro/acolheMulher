@@ -153,6 +153,7 @@ export function classifyFreePublicUnit(
 
   // 3. CREAS / CRAS / Casa da Mulher / CRAM / CEAM / CDCM (SUAS - Assistência & Acolhimento)
   if (
+    !/\bong\b/i.test(name) &&
     /\b(cras|creas|centro de refer[eê]ncia de assist[eê]ncia social|centro de refer[eê]ncia especializado|casa da mulher|cram|ceam|cdcm)\b/i.test(
       name
     )
@@ -196,14 +197,18 @@ export function classifyFreePublicUnit(
     };
   }
 
-  // 5. CAPS (Saúde Mental Pública SUS)
-  if (/\b(caps|capsi|caps ad|centro de aten[çc][aã]o psicossocial)\b/i.test(name)) {
+  // 5. CAPS / NASF (Saúde Mental & Apoio Psicossocial Público SUS)
+  if (
+    /\b(caps|capsi|caps ad|centro de aten[çc][aã]o psicossocial|n[uú]cleo de apoio [àa] sa[uú]de da fam[ií]lia|nasf)\b/i.test(
+      name
+    )
+  ) {
     return {
       kind: 'caps',
       category: 'psicologico',
-      subcategory: 'CAPS · Apoio Psicológico Público (SUS)',
+      subcategory: 'CAPS / Apoio Psicossocial Público (SUS)',
       description:
-        'Centro de Atenção Psicossocial do SUS próximo ao seu CEP. Oferece acolhimento gratuito em saúde mental por porta aberta, sem necessidade de encaminhamento prévio.',
+        'Unidade pública do SUS próxima ao seu CEP com acolhimento gratuito em saúde mental e equipe multiprofissional, sem cobrança.',
       accessMode: 'Livre Demanda (Porta Aberta)',
       defaultHours: 'Segunda a Sexta (CAPS III atende 24h)',
       defaultPhone: '136',
@@ -212,9 +217,9 @@ export function classifyFreePublicUnit(
     };
   }
 
-  // 6. UBS / Posto de Saúde / AMA / PSF / Clínica da Família (Saúde & Acolhimento Inicial)
+  // 6. UBS / USF / Posto de Saúde / Centro de Saúde / Unidade de Saúde / Clínica da Família (todo o Brasil)
   const isUbsOrPosto =
-    /\b(ubs|unidade b[aá]sica|posto de sa[uú]de|centro de sa[uú]de|psf|esf|ama|cl[ií]nica da fam[ií]lia|sa[uú]de da fam[ií]lia)\b/i.test(
+    /\b(ubs|usf|unidade b[aá]sica|unidade de sa[uú]de|unidade mista de sa[uú]de|posto de sa[uú]de|centro de sa[uú]de|centro municipal de sa[uú]de|cms|psf|esf|ama|cl[ií]nica da fam[ií]lia|sa[uú]de da fam[ií]lia)\b/i.test(
       name
     ) ||
     (/\bpolicl[ií]nica\b/i.test(name) &&
@@ -224,20 +229,20 @@ export function classifyFreePublicUnit(
     return {
       kind: 'ubs',
       category: 'saude',
-      subcategory: 'UBS / Posto de Saúde Próximo (SUS)',
+      subcategory: 'UBS / USF / Posto de Saúde (SUS)',
       description:
-        'Unidade Básica de Saúde pública próxima ao seu CEP. Oferece consultas médicas e ginecológicas, pré-natal, preventivo (Papanicolau), testes rápidos e acolhimento em saúde mental pelo SUS.',
+        'Unidade Básica / Saúde da Família pública próxima ao seu CEP. Oferece consultas médicas e ginecológicas, pré-natal, preventivo (Papanicolau), testes rápidos e acolhimento em saúde mental pelo SUS.',
       accessMode: 'Livre Demanda (Porta Aberta)',
       defaultHours: 'Segunda a Sexta, das 07h às 17h (confirmar na unidade)',
       defaultPhone: '136',
       freeConfirmation: 'Atendimento público e gratuito pelo SUS.',
-      tags: ['UBS', 'Posto de Saúde', 'SUS Grátis', 'Saúde da Mulher', 'Acolhimento'],
+      tags: ['UBS', 'USF', 'Posto de Saúde', 'SUS Grátis', 'Saúde da Mulher', 'Acolhimento'],
     };
   }
 
   // 7. UPA / Pronto Atendimento Público
   const isUpa =
-    /\b(upa|unidade de pronto atendimento)\b/i.test(name) ||
+    /\b(upa|unidade de pronto atendimento|servi[çc]o de pronto atendimento)\b/i.test(name) ||
     (/\b(pronto atendimento|pronto[- ]socorro)\b/i.test(name) &&
       (/\b(municipal|estadual|p[uú]blico|sus)\b/i.test(name) || hasPublicOperator));
 
@@ -388,25 +393,20 @@ function mapOverpassElementToService(
 
 function buildOverpassQuery(scope: PublicSearchScope, lat: number, lng: number): string {
   const healthBlock = `
-  nwr["amenity"="hospital"](around:9000,${lat},${lng});
-  nwr["amenity"="clinic"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Hospital|Maternidade|Cl[ií]nica da Fam[ií]lia)",i](around:7000,${lat},${lng});
-  nwr["amenity"="doctors"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Cl[ií]nica da Fam[ií]lia)",i](around:7000,${lat},${lng});
-  nwr["healthcare"~"hospital|centre|clinic"]["name"~"(UBS|AMA|UPA|CAPS|Unidade|Posto|Sa[uú]de|Hospital|Maternidade|Cl[ií]nica da Fam[ií]lia)",i](around:7000,${lat},${lng});`;
+  nwr["amenity"~"hospital|clinic|doctors"](around:20000,${lat},${lng});`;
 
   const socialAndLegalBlock = `
-  nwr["amenity"="social_facility"](around:10000,${lat},${lng});
-  nwr["amenity"="courthouse"](around:10000,${lat},${lng});
-  nwr["office"="government"]["name"~"(Defensoria|CRAS|CREAS|SINE|Mulher)",i](around:10000,${lat},${lng});`;
+  nwr["amenity"~"social_facility|courthouse"](around:20000,${lat},${lng});
+  nwr["office"="government"](around:20000,${lat},${lng});`;
 
   const policeBlock = `
-  nwr["amenity"="police"]["name"~"(Mulher|DEAM|DDM|Casa da Mulher)",i](around:12000,${lat},${lng});`;
+  nwr["amenity"="police"]["name"~"(Mulher|DEAM|DDM|Casa da Mulher)",i](around:25000,${lat},${lng});`;
 
   const coursesBlock = `
-  nwr["amenity"~"college|school|university"]["name"~"(Instituto Federal|ETEC|Centro Vocacional)",i](around:12000,${lat},${lng});`;
+  nwr["amenity"~"college|school|university"]["name"~"(Instituto Federal|ETEC|Centro Vocacional)",i](around:25000,${lat},${lng});`;
 
   const womenNgoBlock = `
-  nwr["office"~"ngo|association"]["name"~"(Mulher|Mulheres|Feminin|M[aã]e|M[aã]es|Gestant|Maria da Penha|Acolhimento|ONG)",i](around:15000,${lat},${lng});
-  nwr["amenity"="social_facility"]["name"~"(Mulher|Mulheres|Feminin|M[aã]e|M[aã]es|Casa da Mulher|CRAM|CEAM|CDCM|Acolhimento)",i](around:15000,${lat},${lng});`;
+  nwr["office"~"ngo|association"](around:22000,${lat},${lng});`;
 
   let body = `${healthBlock}\n${womenNgoBlock}`;
   if (scope === 'psicologico') {
@@ -421,7 +421,7 @@ function buildOverpassQuery(scope: PublicSearchScope, lat: number, lng: number):
     body = `${healthBlock}\n${socialAndLegalBlock}\n${policeBlock}\n${womenNgoBlock}`;
   }
 
-  return `[out:json][timeout:6];\n(\n${body}\n);\nout center tags 80;\n`;
+  return `[out:json][timeout:5];\n(\n${body}\n);\nout center tags 120;\n`;
 }
 
 function getNominatimQueriesForScope(
@@ -439,16 +439,20 @@ function getNominatimQueriesForScope(
     case 'psicologico':
       return ['CAPS', bairro ? `UBS ${bairro} ${city}` : 'UBS', 'CREAS', 'ONG Mulher'];
     case 'saude':
-      return [bairro ? `UBS ${bairro} ${city}` : 'UBS', 'Posto de Saúde', 'Hospital', 'ONG Mulher'];
+      return [bairro ? `UBS ${bairro} ${city}` : 'UBS', 'Centro de Saúde', 'Hospital', 'ONG Mulher'];
     case 'geral':
     default:
       return [bairro ? `UBS ${bairro} ${city}` : 'UBS', 'Hospital', 'Defensoria Pública', 'ONG Mulher'];
   }
 }
 
-async function queryOverpass(endpoint: string, query: string): Promise<OverpassElement[]> {
+async function queryOverpass(
+  endpoint: string,
+  query: string,
+  timeoutMs = 3500
+): Promise<OverpassElement[]> {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 5500);
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -487,36 +491,46 @@ async function queryNominatimBounded(
   const found: { item: ServiceItem; distanceKm: number }[] = [];
   const seen = new Set<string>();
 
-  const responses = await Promise.all(
-    queries.map(async (q) => {
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 4500);
-      try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&extratags=1&countrycodes=br&bounded=1&viewbox=${viewbox}&limit=10&q=${encodeURIComponent(
-          q
-        )}`;
-        const res = await fetch(url, { signal: controller.signal });
-        if (!res.ok) return [];
-        const contentType = res.headers.get('content-type') || '';
-        if (!contentType.includes('json')) return [];
-        return (await res.json()) as Array<{
-          place_id: number;
-          display_name?: string;
-          name?: string;
-          class?: string;
-          type?: string;
-          lat: string;
-          lon: string;
-          address?: Record<string, string>;
-          extratags?: Record<string, string>;
-        }>;
-      } catch {
-        return [];
-      } finally {
-        window.clearTimeout(timeoutId);
+  const responses: Array<
+    Array<{
+      place_id: number;
+      display_name?: string;
+      name?: string;
+      class?: string;
+      type?: string;
+      lat: string;
+      lon: string;
+      address?: Record<string, string>;
+      extratags?: Record<string, string>;
+    }>
+  > = [];
+
+  // Pace Nominatim requests gently to respect its rate limits instead of firing a 4-way simultaneous burst
+  for (let i = 0; i < Math.min(queries.length, 3); i++) {
+    const q = queries[i];
+    if (i > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, 260));
+    }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 3500);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&extratags=1&countrycodes=br&bounded=1&viewbox=${viewbox}&limit=10&q=${encodeURIComponent(
+        q
+      )}`;
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) continue;
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('json')) continue;
+      const batch = await res.json();
+      if (Array.isArray(batch)) {
+        responses.push(batch);
       }
-    })
-  );
+    } catch {
+      // keep partial results
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
 
   for (const results of responses) {
     for (const r of results) {
@@ -582,7 +596,13 @@ function normalizeUnitDedupeKey(name: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\([^)]*\)/g, ' ')
+    .replace(
+      /\b(unidade basica de saude|unidade de saude da familia|unidade de saude|posto de saude|usf|psf)\b/g,
+      'ubs'
+    )
+    .replace(/\b(de|da|do|das|dos)\b/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -600,24 +620,24 @@ function getPhotonQueriesForScope(
       return ['Instituto Federal', 'SINE', 'CRAS', 'ONG Mulher'];
     case 'psicologico':
       return [
-        ...(bairroTerm ? [`UBS ${bairroTerm}`] : []),
+        ...(bairroTerm ? [`UBS ${bairroTerm}`] : ['Centro de Saude']),
         'CAPS',
         'UBS',
-        'Unidade Basica de Saude',
+        'CREAS',
       ];
     case 'saude':
       return [
-        ...(bairroTerm ? [`UBS ${bairroTerm}`] : []),
+        ...(bairroTerm ? [`UBS ${bairroTerm}`] : ['Unidade de Saude']),
         'UBS',
         'Posto de Saude',
-        'Unidade Basica de Saude',
+        'Hospital Municipal',
       ];
     case 'geral':
     default:
       return [
-        ...(bairroTerm ? [`UBS ${bairroTerm}`] : []),
+        ...(bairroTerm ? [`UBS ${bairroTerm}`] : ['Unidade de Saude']),
         'UBS',
-        'Posto de Saude',
+        'Centro de Saude',
         'CREAS',
       ];
   }
@@ -633,47 +653,52 @@ async function queryPhotonProximity(
   const found: { item: ServiceItem; distanceKm: number }[] = [];
   const seen = new Set<string>();
 
-  const responses = await Promise.all(
-    queries.map(async (q) => {
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 4500);
-      try {
-        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(
-          q
-        )}&lat=${userLat.toFixed(5)}&lon=${userLng.toFixed(5)}&limit=15`;
-        const res = await fetch(url, { signal: controller.signal });
-        if (!res.ok) return [];
-        const contentType = res.headers.get('content-type') || '';
-        if (!contentType.includes('json')) return [];
-        const json = (await res.json()) as {
-          features?: Array<{
-            geometry?: { coordinates?: [number, number] };
-            properties?: {
-              osm_type?: string;
-              osm_id?: number;
-              osm_key?: string;
-              osm_value?: string;
-              name?: string;
-              street?: string;
-              housenumber?: string;
-              district?: string;
-              locality?: string;
-              city?: string;
-              postcode?: string;
-              countrycode?: string;
-            };
-          }>;
-        };
-        return Array.isArray(json.features) ? json.features : [];
-      } catch {
-        return [];
-      } finally {
-        window.clearTimeout(timeoutId);
-      }
-    })
-  );
+  type PhotonFeature = {
+    geometry?: { coordinates?: [number, number] };
+    properties?: {
+      osm_type?: string;
+      osm_id?: number;
+      osm_key?: string;
+      osm_value?: string;
+      name?: string;
+      street?: string;
+      housenumber?: string;
+      district?: string;
+      locality?: string;
+      city?: string;
+      postcode?: string;
+      countrycode?: string;
+    };
+  };
 
-  for (const features of responses) {
+  for (let i = 0; i < Math.min(queries.length, 3); i++) {
+    if (found.length >= 8) break;
+    if (i > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+    }
+
+    const q = queries[i];
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 3500);
+    let features: PhotonFeature[] = [];
+    try {
+      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(
+        q
+      )}&lat=${userLat.toFixed(5)}&lon=${userLng.toFixed(5)}&limit=15`;
+      const res = await fetch(url, { signal: controller.signal });
+      if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('json')) {
+          const json = (await res.json()) as { features?: PhotonFeature[] };
+          features = Array.isArray(json.features) ? json.features : [];
+        }
+      }
+    } catch {
+      features = [];
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+
     for (const f of features) {
       const coords = f.geometry?.coordinates;
       const props = f.properties;
@@ -736,11 +761,154 @@ async function queryPhotonProximity(
   return found;
 }
 
+interface CnesPublicUnitPayload {
+  cnes: string;
+  name: string;
+  tipo: number;
+  street?: string;
+  bairro?: string;
+  cep?: string;
+  phone?: string;
+  hours?: string;
+  lat: number;
+  lng: number;
+  distanceKm: number;
+}
+
+function classifyCnesTipoFallback(tipo: number, name: string): {
+  category: ServiceCategory;
+  subcategory: string;
+  description: string;
+  accessMode: ServiceItem['accessMode'];
+  defaultHours: string;
+  tags: string[];
+} {
+  if (tipo === 70 || tipo === 71) {
+    return {
+      category: 'psicologico',
+      subcategory: tipo === 70 ? 'CAPS · Apoio Psicológico Público (SUS)' : 'Apoio Psicossocial Público (SUS)',
+      description:
+        'Unidade pública oficial do SUS (CNES/Ministério da Saúde) próxima ao seu CEP para acolhimento gratuito em saúde mental e suporte multiprofissional.',
+      accessMode: 'Livre Demanda (Porta Aberta)',
+      defaultHours: 'Segunda a Sexta (confirmar horário na unidade)',
+      tags: ['CAPS', 'Apoio Psicológico', 'Saúde Mental', 'SUS Grátis'],
+    };
+  }
+  if (tipo === 5 || tipo === 7 || tipo === 15 || tipo === 20 || tipo === 61 || tipo === 73) {
+    const isUrgent = tipo === 5 || tipo === 20 || tipo === 73;
+    return {
+      category: 'saude',
+      subcategory:
+        tipo === 73
+          ? 'UPA / Pronto Atendimento Público (SUS)'
+          : tipo === 61
+          ? 'Casa de Parto Normal (SUS)'
+          : 'Hospital / Unidade Pública (SUS)',
+      description:
+        'Unidade pública oficial cadastrada no Ministério da Saúde (SUS) próxima ao seu CEP para atendimento médico, urgências, ginecologia e acolhimento gratuito.',
+      accessMode: isUrgent ? 'Plantão 24h' : 'Livre Demanda (Porta Aberta)',
+      defaultHours: isUrgent ? 'Atendimento de urgência 24 horas pelo SUS' : 'Segunda a Sexta, horário comercial',
+      tags: ['Hospital Público', 'SUS Grátis', 'Saúde da Mulher', 'Acolhimento'],
+    };
+  }
+
+  return {
+    category: 'saude',
+    subcategory: /policl/i.test(name) ? 'Policlínica Pública (SUS)' : 'UBS / USF / Posto de Saúde (SUS)',
+    description:
+      'Unidade Básica / Saúde da Família oficial do SUS (CNES) próxima ao seu CEP com consultas, pré-natal, preventivo (Papanicolau) e encaminhamento em saúde mental gratuitos.',
+    accessMode: 'Livre Demanda (Porta Aberta)',
+    defaultHours: 'Segunda a Sexta, das 07h às 17h',
+    tags: ['UBS', 'USF', 'Posto de Saúde', 'SUS Grátis', 'Saúde da Mulher'],
+  };
+}
+
+async function queryCnesPublicUnits(
+  location: CepInfo,
+  userLat: number,
+  userLng: number,
+  scope: PublicSearchScope
+): Promise<{ item: ServiceItem; distanceKm: number }[]> {
+  if (scope === 'juridico' || scope === 'cursos') return [];
+  if (!location.ibge && (!location.localidade || !location.uf)) return [];
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+  try {
+    const params = new URLSearchParams({
+      lat: userLat.toFixed(5),
+      lng: userLng.toFixed(5),
+    });
+    if (location.ibge) params.set('ibge', location.ibge);
+    if (location.localidade) params.set('city', location.localidade);
+    if (location.uf) params.set('uf', location.uf);
+
+    const res = await fetch(`/api/cnes-public?${params.toString()}`, {
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('json')) return [];
+    const json = (await res.json()) as { units?: CnesPublicUnitPayload[] };
+    const rows = Array.isArray(json.units) ? json.units : [];
+
+    const out: { item: ServiceItem; distanceKm: number }[] = [];
+    for (const u of rows) {
+      if (isExcludedPublicPoi(u.name)) continue;
+      const dist = haversineDistanceKm(userLat, userLng, u.lat, u.lng);
+      if (dist > MAX_PROXIMITY_KM) continue;
+
+      const textCls = classifyFreePublicUnit(u.name, { 'operator:type': 'public' });
+      const fallback = classifyCnesTipoFallback(u.tipo, u.name);
+      const category = textCls ? textCls.category : fallback.category;
+      const subcategory = textCls ? textCls.subcategory : fallback.subcategory;
+      const description = textCls ? textCls.description : fallback.description;
+      const accessMode = textCls ? textCls.accessMode : fallback.accessMode;
+      const tags = textCls ? textCls.tags : fallback.tags;
+
+      const address = [u.street, u.bairro, `${location.localidade} - ${location.uf}`]
+        .filter(Boolean)
+        .join(' · ');
+
+      out.push({
+        distanceKm: dist,
+        item: {
+          id: `cnes-${u.cnes}`,
+          name: u.name,
+          category,
+          subcategory,
+          description,
+          state: location.uf,
+          city: location.localidade,
+          neighborhood: u.bairro || undefined,
+          address,
+          cep: u.cep || undefined,
+          lat: u.lat,
+          lng: u.lng,
+          phone: u.phone || '136',
+          hours: u.hours || fallback.defaultHours,
+          accessMode,
+          requiresRegistration: false,
+          freeConfirmation: 'Unidade pública oficial cadastrada no Ministério da Saúde (SUS · 100% gratuito).',
+          tags,
+          tipsForVictim:
+            'Unidade oficial do SUS. Em caso de dúvida sobre horário ou atendimento, ligue na unidade ou gratuitamente para 136.',
+        },
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Dynamically fetches verified 100%-free public network units & free NGOs across ALL of Brazil
- * within <= 30 km of the searched CEP/city coordinates using OpenStreetMap (Overpass + Nominatim + Photon).
+ * within <= 30 km of the searched CEP/city coordinates using CNES (Ministério da Saúde) + OpenStreetMap.
  * Never returns private/paid hospitals or commercial clinics.
- * Zero-PII: only queries public coordinates in memory, never persists user CEP or location.
+ * Zero-PII: only queries public coordinates / municipality IBGE code in memory, never persists user CEP or location.
  */
 export async function fetchNearbySusUnits(
   location: CepInfo | null,
@@ -756,24 +924,24 @@ export async function fetchNearbySusUnits(
   if (!coords) return [];
 
   const scope = normalizePublicScope(category);
-  const cacheKey = `${location.cep}|${location.uf}|${coords.lat.toFixed(4)}|${coords.lng.toFixed(4)}|${scope}`;
+  const cacheKey = `${location.cep}|${location.ibge || ''}|${location.uf}|${coords.lat.toFixed(4)}|${coords.lng.toFixed(4)}|${scope}`;
   const cached = nearbyPublicCache.get(cacheKey);
   if (cached) return cached;
 
   const overpassQuery = buildOverpassQuery(scope, coords.lat, coords.lng);
 
-  // Run Overpass + Nominatim bounded + Photon proximity in parallel so spelling variants (Peri/Pery) and local UBSs always resolve fast
-  const overpassPromise = (async () => {
-    let elements = await queryOverpass('https://overpass-api.de/api/interpreter', overpassQuery);
-    if (elements.length === 0) {
-      elements = await queryOverpass('https://overpass.kumi.systems/api/interpreter', overpassQuery);
-    }
-    return elements;
-  })();
+  // Run CNES official Ministry of Health + Overpass + Nominatim bounded + Photon proximity in parallel
+  const cnesPromise = queryCnesPublicUnits(location, coords.lat, coords.lng, scope);
+  const overpassPromise = queryOverpass(
+    'https://overpass-api.de/api/interpreter',
+    overpassQuery,
+    3500
+  );
 
   const nominatimPromise = queryNominatimBounded(location, coords.lat, coords.lng, scope);
   const photonPromise = queryPhotonProximity(location, coords.lat, coords.lng, scope);
-  const [elements, nomMapped, photonMapped] = await Promise.all([
+  const [cnesMapped, elements, nomMapped, photonMapped] = await Promise.all([
+    cnesPromise,
     overpassPromise,
     nominatimPromise,
     photonPromise,
@@ -781,6 +949,13 @@ export async function fetchNearbySusUnits(
 
   const mapped: { item: ServiceItem; distanceKm: number }[] = [];
   const seenNames = new Set<string>();
+
+  for (const cnes of cnesMapped) {
+    const normName = normalizeUnitDedupeKey(cnes.item.name);
+    if (seenNames.has(normName)) continue;
+    seenNames.add(normName);
+    mapped.push(cnes);
+  }
 
   for (const el of elements) {
     const res = mapOverpassElementToService(el, coords.lat, coords.lng, location);
@@ -807,7 +982,7 @@ export async function fetchNearbySusUnits(
 
   mapped.sort((a, b) => a.distanceKm - b.distanceKm);
 
-  const finalItems = mapped.slice(0, 24).map((m) => m.item);
+  const finalItems = mapped.slice(0, 30).map((m) => m.item);
   nearbyPublicCache.set(cacheKey, finalItems);
   return finalItems;
 }

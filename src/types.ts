@@ -51,6 +51,7 @@ export interface CepInfo {
   localidade: string;
   uf: string;
   ddd?: string;
+  ibge?: string;
   lat?: number;
   lng?: number;
 }

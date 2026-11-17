@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CepInfo, ServiceCategory, ServiceItem } from '../types';
 import { fetchNearbySusUnits, normalizePublicScope } from '../utils/nearbyHealthLookup';
+import { syncDiscoveredNgoToDatabase } from '../utils/demandAnalytics';
 
 export function useNearbySusUnits(
   location: CepInfo | null,
@@ -29,6 +30,11 @@ export function useNearbySusUnits(
         if (!cancelled) {
           setNearbySusUnits(items);
           setLoadingNearbySus(false);
+          for (const unit of items) {
+            if (unit.category === 'social') {
+              void syncDiscoveredNgoToDatabase(unit);
+            }
+          }
         }
       })
       .catch(() => {

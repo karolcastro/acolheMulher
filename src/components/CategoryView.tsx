@@ -12,6 +12,7 @@ import {
 } from '../utils/cepProximity';
 import { useNearbySusUnits } from '../hooks/useNearbySusUnits';
 import { recordAnonymousSearchDemand } from '../utils/demandAnalytics';
+import { normalizeNgoNameKey } from '../lib/supabaseClient';
 import { MapPin, ArrowLeft, ExternalLink, Globe, Building2, RefreshCw } from 'lucide-react';
 
 type HealthSubFilter = 'todos' | 'parto' | 'exames' | 'sus';
@@ -33,7 +34,10 @@ function normalizeDedupeKey(name: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\([^)]*\)/g, ' ')
     .replace(/\s*[—–-]\s*unidade b[aá]sica de sa[uú]de.*$/i, '')
+    .replace(/\b(unidade de saude da familia|unidade basica de saude|usf|psf)\b/g, 'ubs')
+    .replace(/\b(de|da|do|das|dos)\b/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -98,8 +102,12 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
       return false;
     });
 
+    const dbNgoNames = new Set(ngos.map((n) => normalizeNgoNameKey(n.name)));
+
     const relevantPublicUnits = nearbySusUnits.filter((u) => {
-      if (u.category === 'social') return true;
+      if (u.category === 'social') {
+        return !dbNgoNames.has(normalizeNgoNameKey(u.name));
+      }
       const text = `${u.subcategory} ${u.name} ${(u.tags || []).join(' ')}`.toLowerCase();
       if (category === 'saude') {
         return u.category === 'saude' || u.category === 'psicologico';
@@ -155,7 +163,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     }
 
     return sortServicesByCepProximity(combined, currentLocation);
-  }, [category, currentLocation, healthFilter, nationalServices, regionalServices, nearbySusUnits]);
+  }, [category, currentLocation, healthFilter, nationalServices, regionalServices, nearbySusUnits, ngos]);
 
   const onlineOfferServices = useMemo(
     () => rankedServices.filter((item) => isFreeOnlineOffer(item.service)),
@@ -267,10 +275,18 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
             <CepVoiceSearchBar
               variant="compact"
               inputId="categoryCepInput"
-              onLocationResolved={(cepInfo) => {
-                onUpdateLocation(cepInfo);
-                setShowCepChange(false);
-                void recordAnonymousSearchDemand(category, cepInfo);
+              onLocationResolved={onUpdateLocation}
+              onSearchResult={(payload) => {
+                const resolvedLoc = payload.cepInfo ?? currentLocation;
+                if (payload.cepInfo) {
+                  onUpdateLocation(payload.cepInfo);
+                  setShowCepChange(false);
+                }
+                void recordAnonymousSearchDemand(
+                  payload.suggestedSection ?? category,
+                  resolvedLoc,
+                  payload.sourceChannel
+                );
               }}
               onCancel={currentLocation ? () => setShowCepChange(false) : undefined}
             />
@@ -283,7 +299,10 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setHealthFilter(tab.id)}
+                onClick={() => {
+                  setHealthFilter(tab.id);
+                  void recordAnonymousSearchDemand('saude', currentLocation, 'category_filter');
+                }}
                 className={`min-h-[40px] px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-colors ${
                   healthFilter === tab.id
                     ? 'bg-purple-900 text-white'

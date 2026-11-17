@@ -8,6 +8,7 @@ export const GitHubIntegrationView: React.FC = () => {
   const [repoData, setRepoData] = useState<any>(null);
   const [copiedTemplate, setCopiedTemplate] = useState(false);
   const [demandStats, setDemandStats] = useState<DemandStatRow[]>([]);
+  const [totalSearches, setTotalSearches] = useState(0);
   const [isStarSchemaActive, setIsStarSchemaActive] = useState(false);
   const [demandError, setDemandError] = useState<string | null>(null);
   const [loadingDemand, setLoadingDemand] = useState(false);
@@ -15,8 +16,9 @@ export const GitHubIntegrationView: React.FC = () => {
   const loadDemandStats = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     setLoadingDemand(true);
-    const { rows, isStarSchema, error } = await fetchRecentDemandStats(18);
+    const { rows, totalSearches: total, isStarSchema, error } = await fetchRecentDemandStats(24);
     setDemandStats(rows);
+    setTotalSearches(total);
     setIsStarSchemaActive(isStarSchema);
     setDemandError(error);
     setLoadingDemand(false);
@@ -283,12 +285,17 @@ export const GitHubIntegrationView: React.FC = () => {
       {/* Anonymous Regional & Topic Demand Stats (Star Schema) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-8 space-y-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-display font-bold text-slate-900">
+          <div className="flex flex-wrap items-center gap-2 text-sm font-display font-bold text-slate-900">
             <BarChart3 className="w-4 h-4 text-purple-700 shrink-0" />
             <span>
-              Últimos Assuntos &amp; Regiões Buscadas
+              Todas as Buscas Registradas &amp; Regiões
               {isStarSchemaActive ? ' (Star Schema · Anônimo)' : ' (Totais Anônimos)'}
             </span>
+            {isSupabaseConfigured && totalSearches > 0 && (
+              <span className="px-2.5 py-0.5 rounded-lg bg-purple-100 text-purple-950 text-xs font-bold tabular-nums">
+                {totalSearches} buscas no banco
+              </span>
+            )}
           </div>
           {isSupabaseConfigured && (
             <button
@@ -304,7 +311,7 @@ export const GitHubIntegrationView: React.FC = () => {
         </div>
 
         <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-          Modelo <strong>Star Schema</strong> (<code className="font-mono text-purple-900">fact_search_demand</code> + dimensões de data, assunto, região e canal) com RLS estrito — <strong>sem nunca armazenar CEP completo, IP, voz ou histórico individual</strong>.
+          Modelo <strong>Star Schema</strong> (<code className="font-mono text-purple-900">fact_search_demand</code> + dimensões de data, assunto, região e canal) com RLS estrito — registra toda busca por CEP, voz, agente, categoria, subfiltro e diretório de ONGs, <strong>sem nunca armazenar CEP completo, IP, voz ou histórico individual</strong>.
         </p>
 
         {!isSupabaseConfigured ? (
@@ -313,12 +320,12 @@ export const GitHubIntegrationView: React.FC = () => {
               Pronto para conectar ao seu Supabase
             </p>
             <p>
-              Execute <code className="font-mono text-purple-900">supabase/migrations/004_normalized_star_schema_rls.sql</code> no SQL Editor do Supabase e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel para acompanhar os totais aqui.
+              Execute <code className="font-mono text-purple-900">supabase/migrations/004_normalized_star_schema_rls.sql</code> e <code className="font-mono text-purple-900">005_ngos_dedupe_and_complete_search_tracking.sql</code> no SQL Editor do Supabase e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel para acompanhar os totais aqui.
             </p>
           </div>
         ) : demandError ? (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-950">
-            {demandError} Execute o script <code className="font-mono">004_normalized_star_schema_rls.sql</code> no SQL Editor do Supabase.
+            {demandError} Execute os scripts <code className="font-mono">004_normalized_star_schema_rls.sql</code> e <code className="font-mono">005_ngos_dedupe_and_complete_search_tracking.sql</code> no SQL Editor do Supabase.
           </div>
         ) : demandStats.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600">

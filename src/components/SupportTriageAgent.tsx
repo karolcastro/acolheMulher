@@ -11,7 +11,11 @@ import {
   RankedServiceItem,
   sortServicesByCepProximity,
 } from '../utils/cepProximity';
-import { recordAnonymousSearchDemand } from '../utils/demandAnalytics';
+import {
+  DemandAccessChannel,
+  recordAnonymousSearchDemand,
+} from '../utils/demandAnalytics';
+import { normalizeNgoNameKey } from '../lib/supabaseClient';
 import {
   Sparkles,
   Send,
@@ -38,7 +42,11 @@ interface SupportTriageAgentProps {
   currentLocation: CepInfo | null;
   selectedNeed: AppSection | null;
   lastUserNeedText: string | null;
-  onUpdateNeed: (section: AppSection | null, userText?: string | null) => void;
+  onUpdateNeed: (
+    section: AppSection | null,
+    userText?: string | null,
+    channel?: DemandAccessChannel
+  ) => void;
   onOpenSection: (section: AppSection) => void;
   onClearLocation: () => void;
 }
@@ -138,7 +146,10 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     }
   }, [currentLocation, selectedNeed]);
 
-  const handleNeedReply = (rawText: string) => {
+  const handleNeedReply = (
+    rawText: string,
+    sourceChannel: DemandAccessChannel = 'triage_agent'
+  ) => {
     const trimmed = rawText.trim();
     if (!trimmed) {
       setUnclearNotice('Me diga em poucas palavras o que você procura ou toque em uma das opções abaixo.');
@@ -152,15 +163,15 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     if (detected && detected in SECTION_META) {
       setNeedInput('');
       setShowAllNearby(false);
-      onUpdateNeed(detected, trimmed);
+      onUpdateNeed(detected, trimmed, sourceChannel);
       return;
     }
 
     if (/\b(tudo|todos|todas|perto|proxim\w*|geral|online|internet|virtual|whatsapp)\b/.test(norm)) {
       setNeedInput('');
       setShowAllNearby(true);
-      onUpdateNeed(null, trimmed);
-      void recordAnonymousSearchDemand('geral', currentLocation, 'triage_agent');
+      onUpdateNeed(null, trimmed, sourceChannel);
+      void recordAnonymousSearchDemand('geral', currentLocation, sourceChannel);
       return;
     }
 
@@ -176,7 +187,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
         matchedService.category === 'todos' || matchedService.category === 'social'
           ? 'ongs_apoio'
           : matchedService.category;
-      onUpdateNeed(mappedSection, trimmed);
+      onUpdateNeed(mappedSection, trimmed, sourceChannel);
       return;
     }
 
@@ -186,10 +197,11 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
 
     if (matchedNgo) {
       setNeedInput('');
-      onUpdateNeed('ongs_apoio', trimmed);
+      onUpdateNeed('ongs_apoio', trimmed, sourceChannel);
       return;
     }
 
+    void recordAnonymousSearchDemand('geral', currentLocation, sourceChannel);
     setUnclearNotice(
       `Não identifiquei exatamente "${trimmed}". Toque em uma das opções abaixo ou tente palavras como "psicóloga", "advogada", "delegacia", "exame" ou "curso".`
     );
@@ -208,7 +220,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     lang: 'pt-BR',
     onFinalTranscript: (transcript) => {
       setNeedInput(transcript);
-      handleNeedReply(transcript);
+      handleNeedReply(transcript, 'web_voice');
     },
   });
 
@@ -220,8 +232,13 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/\([^)]*\)/g, ' ')
         .replace(/\s*[—–-]\s*unidade b[aá]sica de sa[uú]de.*$/i, '')
+        .replace(/\b(unidade de saude da familia|unidade basica de saude|usf|psf)\b/g, 'ubs')
+        .replace(/\b(de|da|do|das|dos)\b/g, ' ')
         .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
+
+    const dbNgoNames = new Set(ngos.map((n) => normalizeNgoNameKey(n.name)));
 
     const mergeUnique = (base: ServiceItem[], extra: ServiceItem[]): ServiceItem[] => {
       const seenIds = new Set<string>();
@@ -229,6 +246,9 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       const out: ServiceItem[] = [];
       for (const item of [...base, ...extra]) {
         const key = normalizeDedupeKey(item.name);
+        if (item.category === 'social' && dbNgoNames.has(normalizeNgoNameKey(item.name))) {
+          continue;
+        }
         if (seenIds.has(item.id) || seenNames.has(key)) continue;
         seenIds.add(item.id);
         seenNames.add(key);
@@ -288,7 +308,9 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
     if (activeCategoryKey === 'ongs_apoio') {
       const sortedNgos = sortByUf(ngos);
       const localDynamicNgos = sortServicesByCepProximity(
-        nearbySusUnits.filter((u) => u.category === 'social'),
+        nearbySusUnits.filter(
+          (u) => u.category === 'social' && !dbNgoNames.has(normalizeNgoNameKey(u.name))
+        ),
         currentLocation
       );
 
@@ -634,7 +656,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
                   type="button"
                   onClick={() => {
                     setUnclearNotice(null);
-                    onUpdateNeed(key, item.label);
+                    onUpdateNeed(key, item.label, 'triage_agent');
                   }}
                   className={`min-h-[40px] px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-2 text-left transition-all ${item.buttonClass}`}
                 >
@@ -688,7 +710,15 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
           )}
 
           {/* 1. Free Online Offers FIRST + 2. Nearby UBSs, Hospitals and Local Units (<= 30 km) + 3. Matching NGOs */}
-          <div className="space-y-3 max-h-[460px] overflow-y-auto pr-0.5">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-700 bg-purple-50/70 border border-purple-200/80 rounded-xl px-3 py-2">
+            <span>{matchedPreview.onlineServices.length} online grátis</span>
+            <span className="text-slate-300" aria-hidden="true">·</span>
+            <span>{matchedPreview.localServices.length} da rede pública/local perto do CEP</span>
+            <span className="text-slate-300" aria-hidden="true">·</span>
+            <span className="text-purple-900">{matchedPreview.ngoItems.length} ONGs voltadas para mulheres</span>
+          </div>
+
+          <div className="space-y-4">
             {matchedPreview.onlineServices.length > 0 && (
               <div className="space-y-2">
                 <div className="text-[11px] font-bold text-purple-900 flex items-center gap-1.5">

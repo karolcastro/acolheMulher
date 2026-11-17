@@ -236,8 +236,8 @@ export function estimateCoordinatesForCepAndCity(
   if (digits.length >= 3 && CEP_PREFIX3_COORDS[digits.slice(0, 3)]) {
     return CEP_PREFIX3_COORDS[digits.slice(0, 3)];
   }
-  if (digits.length >= 2) {
-    // Try nearest 3-digit prefix sharing the same 2-digit sub-sector
+  if (digits.length >= 2 && (digits[0] === '0' || !city)) {
+    // Only interpolate by 2-digit prefix inside Grande São Paulo (0xxxx) or when city name is unknown
     const prefix2 = digits.slice(0, 2);
     const matchingKey = Object.keys(CEP_PREFIX3_COORDS).find((k) => k.startsWith(prefix2));
     if (matchingKey) {
@@ -339,7 +339,7 @@ export function buildMapsSusSearchUrl(
 
 export function isFreeOnlineOffer(service: ServiceItem): boolean {
   return Boolean(
-    service.isNationalOnline &&
+    (service.isNationalOnline || (service.accessMode === 'Online Imediato' && !service.address)) &&
       (service.accessMode === 'Online Imediato' || service.website || service.whatsapp)
   );
 }
@@ -413,6 +413,27 @@ export function sortServicesByCepProximity(
     // Never show physical services in another state when a CEP/location is active
     const serviceUf = service.state?.trim().toUpperCase();
     if (!serviceUf || !userUf || serviceUf !== userUf) {
+      continue;
+    }
+
+    const isStatewideRemoteOrPhone =
+      typeof service.lat !== 'number' &&
+      typeof service.lng !== 'number' &&
+      !service.address &&
+      (service.accessMode === 'Online Imediato' || Boolean(service.whatsapp) || Boolean(service.phone));
+
+    if (isStatewideRemoteOrPhone) {
+      const onlineOffer = service.accessMode === 'Online Imediato' || Boolean(service.whatsapp || service.website);
+      enriched.push({
+        service,
+        distanceKm: null,
+        distanceLabel: onlineOffer
+          ? `Atendimento estadual gratuito (${serviceUf}) · WhatsApp / Online`
+          : `Atendimento estadual gratuito (${serviceUf}) · Telefone`,
+        isNearbyLocal: false,
+        tier: onlineOffer ? 0 : 1,
+        cepDiff: 0,
+      });
       continue;
     }
 

@@ -2,8 +2,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { ServiceCategory, ServiceItem } from '../types';
 import type { NgoHelpArea, NgoItem } from '../data/ngosData';
 
-const rawUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? '';
-const rawAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? '';
+const metaEnv = (import.meta as { env?: Record<string, string | undefined> }).env;
+const rawUrl = metaEnv?.VITE_SUPABASE_URL?.trim() ?? '';
+const rawAnonKey = metaEnv?.VITE_SUPABASE_ANON_KEY?.trim() ?? '';
 
 function isValidSupabaseUrl(url: string): boolean {
   if (!url) return false;
@@ -67,10 +68,13 @@ export interface SupabaseNgoRow {
   area: string;
   area_label: string;
   coverage: string;
+  state?: string | null;
+  city?: string | null;
   summary: string;
   how_they_help: string[] | null;
   access_channel: string;
   website_url: string;
+  privacy_note?: string | null;
   related_categories: string[] | null;
   featured: boolean;
   is_verified: boolean;
@@ -193,11 +197,71 @@ export function mapRowToNgoItem(row: SupabaseNgoRow): NgoItem {
     area,
     areaLabel: row.area_label || 'Apoio Gratuito',
     coverage: row.coverage || 'Brasil',
+    state: row.state ? row.state.trim().toUpperCase() : undefined,
+    city: row.city ? row.city.trim() : undefined,
     accessChannel: row.access_channel || 'Atendimento online',
     summary: row.summary || '',
     howTheyHelp: Array.isArray(row.how_they_help) ? row.how_they_help : [],
     websiteUrl: sanitizeExternalUrl(row.website_url) || '#',
-    privacyNote: 'Atendimento gratuito sem exposição pública de dados.',
+    privacyNote: row.privacy_note?.trim() || 'Atendimento gratuito sem exposição pública de dados.',
     relatedCategories: validRelated,
   };
 }
+
+export function normalizeNgoNameKey(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\b(de|da|do|das|dos|e|para|em|no|na|nos|nas)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function extractNgoDomainKey(url: string | undefined | null): string {
+  const raw = (url || '').trim();
+  if (!raw || raw === '#') return '';
+  try {
+    const withProto = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    const hostname = new URL(withProto).hostname.toLowerCase().replace(/^www\./, '');
+    return hostname.includes('.') ? hostname : '';
+  } catch {
+    const stripped = raw
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/^www\./, '')
+      .split(/[/?#:]/)[0]
+      .trim();
+    return stripped.includes('.') ? stripped : '';
+  }
+}
+
+export function areNgosDuplicates(
+  a: Pick<NgoItem, 'id' | 'name' | 'websiteUrl' | 'state' | 'city'>,
+  b: Pick<NgoItem, 'id' | 'name' | 'websiteUrl' | 'state' | 'city'>
+): boolean {
+  if (a.id && b.id && a.id === b.id) return true;
+
+  const nameA = normalizeNgoNameKey(a.name);
+  const nameB = normalizeNgoNameKey(b.name);
+  if (nameA && nameB && nameA === nameB) return true;
+
+  const domainA = extractNgoDomainKey(a.websiteUrl);
+  const domainB = extractNgoDomainKey(b.websiteUrl);
+  if (domainA && domainB && domainA === domainB) {
+    const stateA = (a.state || '').trim().toUpperCase();
+    const stateB = (b.state || '').trim().toUpperCase();
+    if (!stateA || !stateB) return true;
+
+    if (stateA === stateB) {
+      const cityA = normalizeNgoNameKey(a.city || '');
+      const cityB = normalizeNgoNameKey(b.city || '');
+      if (!cityA || !cityB || cityA === cityB) return true;
+    }
+  }
+
+  return false;
+}
+

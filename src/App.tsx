@@ -11,6 +11,7 @@ import { CatalogProvider } from './context/CatalogContext';
 import { useOnlineStatus } from './hooks/usePWAInstall';
 import { WifiOff, Mail, Github, Heart, ExternalLink } from 'lucide-react';
 import { AppSection, CepInfo } from './types';
+import { recordAnonymousSearchDemand } from './utils/demandAnalytics';
 
 function AppContent() {
   const [activeSection, setActiveSection] = useState<AppSection>('inicio');
@@ -18,6 +19,24 @@ function AppContent() {
   const [isCamouflaged, setIsCamouflaged] = useState(false);
   const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
   const isOnline = useOnlineStatus();
+
+  const handleNavSectionChange = (section: AppSection) => {
+    setActiveSection(section);
+    if (
+      section === 'emergencia' ||
+      section === 'psicologico' ||
+      section === 'juridico' ||
+      section === 'saude' ||
+      section === 'cursos' ||
+      section === 'ongs_apoio'
+    ) {
+      void recordAnonymousSearchDemand(
+        section,
+        currentLocation,
+        section === 'ongs_apoio' ? 'ongs_directory' : 'category_card'
+      );
+    }
+  };
 
   // Quick exit handler: replaces history so back button cannot return
   const handleQuickExit = () => {
@@ -50,7 +69,7 @@ function AppContent() {
       {/* Clean Single-Row Top Header */}
       <Header
         activeSection={activeSection}
-        setActiveSection={setActiveSection}
+        setActiveSection={handleNavSectionChange}
         onQuickExit={handleQuickExit}
         onToggleCamouflage={() => setIsCamouflaged(true)}
       />
@@ -146,7 +165,10 @@ function AppContent() {
         )}
 
         {activeSection === 'ongs_apoio' && (
-          <NgosView onBackToHome={() => setActiveSection('inicio')} />
+          <NgosView
+            currentLocation={currentLocation}
+            onBackToHome={() => setActiveSection('inicio')}
+          />
         )}
 
         {activeSection === 'app' && (
@@ -240,7 +262,7 @@ function AppContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveSection('ongs_apoio')}
+                  onClick={() => handleNavSectionChange('ongs_apoio')}
                   className="py-1 text-slate-200 hover:text-pink-300 transition-colors text-left"
                 >
                   ONGs que Ajudam

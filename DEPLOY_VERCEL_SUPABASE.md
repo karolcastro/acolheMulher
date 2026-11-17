@@ -10,8 +10,9 @@ Todos os arquivos de configuração já estão prontos no repositório. Siga os 
 3. Copie todo o conteúdo do arquivo `supabase/migrations/001_schema_rls.sql` e clique em **Run**.
    - Se você já havia rodado a versão anterior do `001_schema_rls.sql`, execute também `supabase/migrations/002_enable_realtime.sql` no SQL Editor para liberar o **Supabase Realtime** nas tabelas `services` e `ngos`.
    - Para normalização completa (**3FN**), modelo **Star Schema** (`fact_search_demand` + dimensões `dim_dates`, `dim_categories`, `dim_regions`, `dim_access_channels`), busca por proximidade geográfica (`<= 30 km`) e políticas **RLS estritas** em todas as tabelas e views (`security_invoker`), execute **`supabase/migrations/004_normalized_star_schema_rls.sql`** (pode rodar mesmo após `003_search_demand_stats.sql` — ele migra os dados automaticamente).
+   - Em seguida, execute **`supabase/migrations/005_ngos_dedupe_and_complete_search_tracking.sql`** para sincronizar todas as **14 ONGs verificadas**, ativar **travas anti-duplicidade** (`uq_ngos_name_normalized` e `uq_ngos_domain_scope` + RPC `register_ngo_candidate`) e registrar todos os canais de busca da plataforma no Star Schema.
    - Todas as tabelas possuem **Row Level Security (`ENABLE` + `FORCE`)** ativada.
-   - O acesso público (`anon`) tem permissão **apenas de leitura (`SELECT`)** em serviços verificados e totais agregados — nenhuma escrita direta é permitida ao público; o registro de demanda ocorre apenas via função RPC validada (`record_star_search_demand`).
+   - O acesso público (`anon`) tem permissão **apenas de leitura (`SELECT`)** em serviços verificados e totais agregados — nenhuma escrita direta é permitida ao público; o registro de demanda e de novas ONGs ocorre apenas via funções RPC validadas (`record_star_search_demand` e `register_ngo_candidate`).
    - Nenhum dado pessoal, CEP completo da usuária, IP ou histórico individual é gravado no banco (*Zero-PII*).
 4. Vá em **Project Settings → API** e copie:
    - `Project URL` (`VITE_SUPABASE_URL`)
