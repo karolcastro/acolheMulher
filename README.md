@@ -1,212 +1,167 @@
-# 🌸 AcolheMulher
+# AcolheMulher
 
-**Rede aberta de apoio, proteção, assistência e capacitação para mulheres no Brasil.**
+Plataforma web responsiva e PWA que organiza o acesso a serviços gratuitos de proteção, acolhimento, saúde, orientação jurídica, capacitação e iniciativas de apoio a mulheres no Brasil. A consulta para usuárias não exige criação de conta, login ou fornecimento de dados cadastrais.
 
-O **AcolheMulher** é uma plataforma web responsiva, com suporte a instalação como aplicativo PWA, que facilita a busca por serviços gratuitos de apoio às mulheres. A proposta é reduzir a distância entre quem precisa de ajuda e a rede de atendimento, organizando as opções por categoria e localização.
+> **Importante:** o AcolheMulher é uma ferramenta de orientação e localização de serviços. Não substitui atendimento de emergência, avaliação profissional ou confirmação direta de disponibilidade do serviço.
 
-> **Você não precisa criar uma conta para pesquisar.** A plataforma foi concebida para permitir o acesso sem cadastro, login, e-mail ou senha.
-
-[**Acessar a plataforma**](https://ais-dev-r2gpsznwryzoskbbumntwb-755060135040.us-west2.run.app) · [Repositório GitHub](https://github.com/karolcastro/acolheMulher)
+[Aplicação](https://github.com/karolcastro/acolheMulher) · [Código-fonte](https://github.com/karolcastro/acolheMulher) · [Guia de implantação](DEPLOY_VERCEL_SUPABASE.md) · [Arquitetura](docs/ARCHITECTURE.md) · [Banco de dados](docs/DATABASE.md) · [Privacidade e segurança](docs/SECURITY_PRIVACY.md)
 
 ---
 
-## 🧭 O que a plataforma oferece
+## 1. Objetivo e funcionalidades
 
-A usuária pode escolher a categoria de apoio e informar um CEP para localizar serviços relacionados à região. A aplicação também contempla busca por voz, consulta de serviços de saúde públicos e um diretório de organizações.
+O projeto reúne um catálogo de serviços e permite explorar opções por assunto e região. O fluxo principal foi concebido para funcionar sem cadastro da usuária.
 
-| Categoria | Exemplos de apoio |
-|---|---|
-| 🚨 Proteção e emergência | Ligue 180, Polícia 190, delegacias e serviços de acolhimento |
-| ⚖️ Orientação jurídica | Defensorias Públicas, orientação sobre direitos e proteção |
-| 🧠 Apoio psicológico | Redes de acolhimento e apoio emocional |
-| 🏥 Saúde | Unidades públicas de saúde e serviços do SUS |
-| 🎓 Cursos e geração de renda | Capacitação profissional e iniciativas voltadas às mulheres |
-| 🤝 ONGs e projetos sociais | Organizações, coletivos e iniciativas de apoio |
+- **Busca por localização:** consulta de CEP e resolução de endereço por meio do ViaCEP; filtros e ordenação territorial são aplicados ao catálogo.
+- **Categorias:** emergência e proteção, apoio psicológico, orientação jurídica, saúde, cursos e geração de renda, além de iniciativas e organizações de apoio.
+- **Catálogo híbrido:** dados locais versionados no frontend e no backend Python, complementados por registros do Supabase quando a integração está configurada.
+- **Unidades públicas de saúde:** endpoint CNES consulta dados públicos do Ministério da Saúde e aplica filtros de tipo, situação, natureza administrativa e coordenadas.
+- **Busca por voz:** reconhecimento nativo do navegador quando disponível; há caminho alternativo de gravação e transcrição via Gemini no endpoint de servidor. A interpretação de texto também possui lógica local.
+- **Área de organizações parceiras:** formulário para propor/cadastrar ONGs no catálogo, com verificação de duplicidade e persistência via RPC do Supabase quando configurado.
+- **Indicadores de demanda:** registro de contagens agregadas por assunto, data e região, além de estatísticas relacionais de buscas por voz, quando o Supabase e as migrations correspondentes estão ativos.
+- **Acesso emergencial:** interface com telefones essenciais e orientações para acesso offline.
+- **Modo camuflagem e saída rápida:** recursos de interface voltados à segurança digital, com limitações descritas em [Privacidade e segurança](docs/SECURITY_PRIVACY.md).
+- **PWA:** instalação na tela inicial e cache do shell/arquivos estáticos e fontes. O modo offline não equivale a uma cópia offline de todo o catálogo ou das APIs.
 
-### Prioridade para formação de mulheres
+## 2. Tecnologias identificadas no repositório
 
-Nas buscas por cursos e oportunidades, a proposta do projeto é priorizar iniciativas criadas por mulheres para mulheres ou destinadas especificamente ao público feminino. Entre as referências a investigar estão PyLadies, Todas em Tech, AI Girls, PrograMaria, WoMakersCode, Cloud Girls, Minas Programam, PretaLab e Meninas Digitais.
-
-Esses nomes são referências de pesquisa, não uma confirmação de que tenham cursos ou inscrições abertas. A gratuidade, o público elegível, a modalidade e o prazo precisam ser verificados em fonte oficial antes de apresentar uma oportunidade como disponível.
-
----
-
-## ✨ Funcionalidades implementadas no código
-
-- **Pesquisa por CEP:** consulta de endereço e identificação de município e UF, com integração ao ViaCEP.
-- **Catálogo por categoria e região:** combinação de serviços nacionais, dados regionais e registros disponibilizados pelo banco.
-- **Consulta de unidades públicas de saúde:** endpoint de consulta ao CNES/Dados Abertos do Ministério da Saúde, com apoio da API de localidades do IBGE.
-- **Busca por voz:** envio de áudio ao backend para transcrição com Gemini, quando a chave de API está configurada.
-- **Diretório de ONGs:** visualização de organizações e projetos de apoio às mulheres.
-- **Área para organizações parceiras:** interface para gerar widget, sugerir/cadastrar ONGs e consultar estatísticas de demanda.
-- **PWA:** aplicação instalável em dispositivos compatíveis, com service worker e recursos de acesso offline.
-- **Acesso rápido de saída:** atalho pela tecla `ESC` e botão na interface.
-- **Modo camuflagem:** alternativa visual que substitui a tela principal por uma página neutra.
-
-> **Importante sobre segurança:** o botão de saída rápida redireciona para outro endereço e a aplicação limpa os storages locais que consegue acessar. Isso não garante a exclusão do histórico do navegador, de registros de rede ou de dados mantidos por terceiros. O modo camuflagem também não substitui um dispositivo seguro. Se houver risco de monitoramento, considere usar um dispositivo confiável e apague o histórico apenas se isso não aumentar o risco.
-
----
-
-## 🧱 Arquitetura e tecnologias
-
-| Camada | Tecnologia | Responsabilidade |
+| Camada | Tecnologias / componentes | Uso |
 |---|---|---|
-| Interface | React 19 | Componentes e experiência da usuária |
-| Linguagem | TypeScript | Tipagem e organização do código |
-| Build e desenvolvimento | Vite | Servidor de desenvolvimento e build |
-| Estilização | Tailwind CSS v4 | Layout responsivo e estilos |
-| Servidor | Node.js + Express | Endpoints de backend |
-| Banco de dados | Supabase / PostgreSQL | Catálogo, organizações e métricas agregadas |
-| IA de voz | Google Gemini API | Transcrição de áudio enviada ao backend |
-| CEP | ViaCEP | Consulta de endereço a partir do CEP |
-| Saúde pública | API CNES/Dados Abertos do Ministério da Saúde | Consulta de estabelecimentos de saúde |
-| Localidades | API de localidades do IBGE | Apoio à identificação do município |
-| Aplicativo | Vite PWA Plugin | Manifesto, instalação e cache offline |
-| Widget | Interface de integração para sites parceiros | Compartilhamento do buscador |
+| Frontend | React 19, TypeScript, Vite 8, Tailwind CSS 4, Lucide React, Motion | Interface, componentes e estilos |
+| PWA | vite-plugin-pwa / Workbox | Manifesto, service worker, atualização e cache de recursos estáticos |
+| Backend Node/TypeScript | Express 4, tsx, Google GenAI SDK | Servidor de desenvolvimento/execução própria e endpoints de saúde, CNES e transcrição |
+| API serverless | Arquivos TypeScript em `api/` | Endpoints `/api/cnes-public` e `/api/transcribe` na plataforma compatível com a convenção Vercel |
+| Backend Python | Python, biblioteca padrão, arquitetura em camadas | API REST independente e servidor MCP |
+| Banco principal | Supabase / PostgreSQL | Catálogo remoto, organizações, políticas RLS e métricas agregadas |
+| Integrações | ViaCEP, API pública CNES/IBGE, Gemini | Consulta de CEP, unidades de saúde e transcrição de áudio |
 
-### Visão simplificada do fluxo
+As dependências JavaScript e suas versões declaradas estão em [package.json](package.json); o lockfile do repositório é `bun.lock`.
+
+## 3. Arquitetura em alto nível
 
 ```mermaid
 flowchart TD
-    A[Usuária acessa a plataforma sem cadastro] --> B[Escolhe categoria ou busca por voz]
-    B --> C[Informa CEP ou localização]
-    C --> D[Consulta CEP e identifica município/UF]
-    D --> E[Catálogo local, nacional e fontes públicas]
-    E --> F[Resultados de serviços e organizações]
-    F --> G[Informações de acesso e contato]
-    B --> H[Métricas anônimas de demanda]
-    C --> H
-    H --> I[Supabase / PostgreSQL]
+  U[Usuária] --> FE[React + TypeScript]
+  FE --> CEP[ViaCEP]
+  FE --> CAT[Catálogo local]
+  FE --> SB[Supabase / PostgreSQL]
+  FE --> CNES[API /api/cnes-public]
+  FE --> VOZ[API /api/transcribe]
+  VOZ --> GEM[Gemini]
+  FE --> PWA[Service Worker / cache de recursos]
+  PY[Backend Python independente] --> SB
+  PY --> VIA[ViaCEP]
+  PY --> REST[API REST]
+  PY --> MCP[Servidor MCP: HTTP ou STDIO]
 ```
 
----
+O frontend, os endpoints TypeScript e o backend Python são partes distintas. O backend Python não é iniciado automaticamente pelo build Vite. Consulte [Arquitetura](docs/ARCHITECTURE.md) para responsabilidades, rotas e limites de integração.
 
-## 📊 Métricas de demanda e privacidade
+## 4. Estrutura do repositório
 
-O projeto possui uma rotina opcional de registro de demanda anônima no Supabase. O objetivo é permitir análises agregadas, como:
+| Caminho | Responsabilidade |
+|---|---|
+| `src/` | Aplicação React, componentes, contexto do catálogo, hooks, dados locais e utilitários |
+| `api/` | Funções HTTP TypeScript para CNES e transcrição |
+| `server.ts` | Servidor Express com middleware Vite no desenvolvimento e opção de servir o build em execução própria |
+| `backend/` | Backend Python em camadas, API REST, segurança e MCP |
+| `supabase/migrations/` | Evolução do schema PostgreSQL, RLS, catálogo e analytics |
+| `database/mysql/` | Script SQL alternativo para MySQL 8; não é o banco conectado pelo código da aplicação |
+| `public/` | Ícones e recursos públicos do PWA |
+| `DEPLOY_VERCEL_SUPABASE.md` | Guia de configuração e implantação |
 
-- categorias de apoio mais pesquisadas;
-- estados, municípios e macrorregiões com maior procura;
-- canais de acesso utilizados;
-- volume de buscas por período.
-
-A rotina de métricas foi implementada para não enviar CEP completo, coordenadas, IP, nome, CPF, e-mail ou identificadores do navegador. Para a análise territorial, são utilizados categoria, UF e município. A aplicação também normaliza a transcrição de buscas por voz antes de registrar os dados relacionais; o áudio original não é gravado por essa rotina de métricas.
-
-**Atenção:** a busca por voz envia o áudio ao backend e, quando configurada, à API Gemini para transcrição. A transcrição normalizada pode conter palavras da solicitação. Por segurança, não dite nomes, documentos, endereços completos ou relatos íntimos. O registro de métricas depende da configuração do Supabase; sem essa configuração, a aplicação não grava essas métricas.
-
-O cliente Supabase está configurado sem persistência de sessão no navegador. Isso não deve ser interpretado como garantia de anonimato absoluto: hospedagem, navegador, APIs externas e provedores podem manter seus próprios registros técnicos, conforme suas políticas.
-
----
-
-## 🛠️ Como executar localmente
+## 5. Executar localmente
 
 ### Pré-requisitos
 
-- Node.js compatível com a versão do Vite utilizada no projeto (recomendado Node.js 20.19+ ou 22.12+).
-- npm.
-- Projeto Supabase, se desejar habilitar banco de dados e métricas.
-- Chave Gemini, se desejar habilitar transcrição por voz.
+- Node.js compatível com as versões declaradas em `package.json`.
+- npm ou Bun.
+- Python 3 para executar o backend Python (opcional).
+- Projeto Supabase e chave Gemini apenas para habilitar as integrações correspondentes.
 
-### 1. Clonar o repositório
+### Frontend e endpoints Express locais
 
 ```bash
 git clone https://github.com/karolcastro/acolheMulher.git
 cd acolheMulher
-```
-
-### 2. Instalar as dependências
-
-```bash
 npm install
-```
-
-### 3. Configurar variáveis de ambiente
-
-Crie um arquivo `.env` na raiz do projeto. Use `.env.example` como referência:
-
-```env
-# Frontend - Supabase (opcional)
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
-
-# Backend - Gemini (necessária para transcrição por voz)
-GEMINI_API_KEY=
-
-# Backend - outras configurações usadas pelo projeto
-APP_URL=
-ACOLHE_ALLOWED_ORIGIN=
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-ACOLHE_PARTNER_TOKEN=
-```
-
-Preencha apenas as variáveis necessárias ao ambiente. **Nunca publique chaves secretas, tokens ou credenciais no GitHub.** A chave pública `anon` do Supabase deve estar protegida pelas políticas de acesso (RLS) adequadas no banco.
-
-### 4. Iniciar em desenvolvimento
-
-```bash
 npm run dev
 ```
 
-O servidor Express inicia na porta 3000 por padrão (ou na porta definida pela variável `PORT`) e integra o middleware de desenvolvimento do Vite.
+O script `npm run dev` executa `tsx server.ts`, que inicia o Express e integra o middleware de desenvolvimento do Vite. O servidor usa a porta 3000 por padrão (ou a variável `PORT`).
 
-### 5. Gerar o build de produção
+### Build de produção do frontend
 
 ```bash
 npm run build
-```
-
-Para visualizar o build localmente:
-
-```bash
 npm run preview
 ```
 
-O comando `npm run start` inicia o servidor Express em modo de produção; nesse modo, o diretório `dist` precisa existir.
+O build Vite é gerado em `dist/`. O script `lint` executa a verificação de tipos TypeScript (`tsc --noEmit`); não é uma suíte completa de lint estilístico.
 
----
+### Backend Python (opcional e independente)
 
-## 🔐 Configurações e integrações
+```bash
+python3 -m backend.main
+```
 
-- **Supabase:** configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no frontend. As funções de catálogo e métricas dependem de tabelas, views, RPCs e políticas existentes no projeto Supabase.
-- **Gemini:** configure `GEMINI_API_KEY` no ambiente do servidor para habilitar o endpoint `/api/transcribe`.
-- **CNES:** a consulta pública é realizada pelo endpoint `/api/cnes-public`.
-- **CEP:** a consulta de endereço utiliza o ViaCEP.
-- **PWA:** o manifesto e o service worker são gerados pela configuração do plugin PWA no Vite.
+Por padrão, o backend Python escuta em `127.0.0.1:8000`. Para executar o transporte MCP por STDIO:
 
-Os scripts SQL necessários ao banco devem ser aplicados no projeto Supabase correspondente. Consulte os arquivos SQL existentes no repositório antes de configurar um ambiente novo; a aplicação pode funcionar com o catálogo local mesmo sem Supabase configurado, mas recursos que dependem do banco ficam indisponíveis.
+```bash
+python3 -m backend.mcp.server
+```
 
----
+A execução e as variáveis estão detalhadas em [Arquitetura](docs/ARCHITECTURE.md) e [Implantação](DEPLOY_VERCEL_SUPABASE.md).
 
-## 🆘 Telefones importantes no Brasil
+## 6. Variáveis de ambiente
 
-Se houver perigo imediato, procure um local seguro e ligue **190 — Polícia Militar**. Para orientação e denúncia de violência contra a mulher, ligue **180 — Central de Atendimento à Mulher**. Para apoio emocional, o **CVV atende pelo 188**.
+Nunca versione chaves reais. Use `.env.example` como referência e configure apenas as variáveis necessárias ao componente que será executado.
 
-A plataforma é uma facilitadora de acesso à rede de serviços; não substitui atendimento policial, jurídico, psicológico ou de saúde.
+| Variável | Componente | Finalidade |
+|---|---|---|
+| `VITE_SUPABASE_URL` | Frontend | URL do projeto Supabase |
+| `VITE_SUPABASE_ANON_KEY` | Frontend | Chave pública anon do Supabase, protegida por RLS |
+| `SUPABASE_URL` | Backend Python | URL do Supabase |
+| `SUPABASE_ANON_KEY` | Backend Python | Chave pública anon usada pelo repositório Python |
+| `GEMINI_API_KEY` | API de transcrição / Express | Chave de servidor para Gemini; nunca usar como variável `VITE_*` |
+| `GOOGLE_API_KEY` | API de transcrição / Express | Alternativa de nome aceita pelo código para a chave Gemini |
+| `ACOLHE_ALLOWED_ORIGIN` | Backend Python | Origem permitida para CORS |
+| `ACOLHE_HOST`, `ACOLHE_PORT` | Backend Python | Host e porta HTTP |
+| `ACOLHE_PARTNER_TOKEN` | Backend Python | Token opcional para operações de parceiro protegidas |
+| `ACOLHE_EPHEMERAL_SECRET` | Backend Python | Segredo opcional para gerar identificador efêmero do rate limiter |
 
----
+O frontend funciona com catálogo local quando a conexão Supabase não está configurada ou não pode ser utilizada. Recursos remotos, gravação de métricas e persistência de novos registros dependem da configuração do Supabase e das migrations necessárias.
 
-## 🗺️ Diretrizes do projeto
+## 7. Banco de dados
 
-1. **Acesso sem cadastro:** não exigir conta, login, e-mail ou senha para pesquisar.
-2. **Gratuidade:** priorizar serviços gratuitos e informar restrições ou custos quando existirem.
-3. **Confiabilidade:** dar preferência a fontes oficiais e institucionais e indicar quando uma informação não foi verificada.
-4. **Localização útil:** considerar CEP, município e UF para apresentar opções compatíveis com a região.
-5. **Privacidade:** evitar a coleta de dados pessoais e não armazenar relatos sensíveis desnecessariamente.
-6. **Acolhimento:** utilizar linguagem clara, respeitosa e sem julgamentos.
-7. **Formação feminina:** priorizar cursos, bolsas e programas destinados especificamente às mulheres, especialmente iniciativas lideradas por mulheres.
+O banco efetivamente integrado ao frontend e ao backend Python é Supabase/PostgreSQL. O histórico de evolução está em `supabase/migrations/001` a `007`; em uma instalação nova, execute os scripts em ordem. O modelo inclui tabelas de catálogo, dimensões e fatos analíticos, além de funções RPC e políticas RLS.
 
----
+O arquivo em `database/mysql/` é uma implementação SQL alternativa de referência para MySQL 8.0+. O código atual da aplicação utiliza o cliente Supabase e não contém um adaptador de runtime MySQL.
 
-## 👩‍💻 Autoria
+Veja [Banco de dados](docs/DATABASE.md) para entidades, analytics, RLS e sequência de migrations.
 
-Projeto idealizado e desenvolvido por **Karol Castro**, no contexto da formação **{reprograma}**.
+## 8. Privacidade, segurança e limitações
 
-- GitHub: [@karolcastro](https://github.com/karolcastro)
-- Repositório: [karolcastro/acolheMulher](https://github.com/karolcastro/acolheMulher)
+- O fluxo de consulta para usuárias não exige cadastro, login, CPF, nome, e-mail ou telefone.
+- A aplicação evita persistir CEP completo, IP e identificadores de navegação nas tabelas de analytics. Os indicadores armazenam assunto, data e região agregada; o módulo de voz pode armazenar transcrição normalizada/sanitizada sem os dígitos do CEP.
+- O Supabase usa chave pública no cliente e políticas RLS; operações de escrita analítica e cadastro de ONG são feitas por RPCs específicas. Isso não significa ausência absoluta de dados: o catálogo contém dados públicos de serviços e organizações, e a região/assunto são dados analíticos.
+- A transcrição por Gemini exige chave de servidor. O áudio é enviado ao endpoint e encaminhado ao provedor para transcrição; não é armazenado pelo código da aplicação em tabela própria.
+- O PWA armazena recursos estáticos necessários ao shell da aplicação. Não há garantia de busca online, atualização de catálogo ou consulta a APIs sem conexão.
+- A saída rápida limpa `localStorage` e `sessionStorage` da origem e navega para outra página; isso **não apaga o histórico do navegador, registros do provedor, DNS, rede, capturas de tela ou monitoramento externo**.
+- Informações de serviços, horários, elegibilidade, gratuidade e disponibilidade podem mudar. Confirme com o órgão ou organização responsável antes de se deslocar.
 
----
+Leia [Privacidade e segurança](docs/SECURITY_PRIVACY.md) antes de divulgar garantias de anonimato, sigilo ou segurança operacional.
 
-## 📄 Licença
+## 9. Testes
 
-O repositório contém um badge MIT no README anterior. Consulte o arquivo `LICENSE` do projeto para confirmar os termos e condições aplicáveis.
+O repositório contém testes Python em `backend/tests/`, executáveis com:
+
+```bash
+python3 -m unittest discover -s backend/tests -v
+```
+
+Também é possível executar `npm run lint` e `npm run build`. A existência dos testes no repositório não representa, por si só, evidência de que foram executados neste commit.
+
+## 10. Autoria e licença
+
+Projeto de impacto social desenvolvido por Karol Castro. A licença declarada pelo README anterior é MIT; confira o arquivo `LICENSE` no repositório antes de redistribuir. 
