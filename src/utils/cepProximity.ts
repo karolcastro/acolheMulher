@@ -238,21 +238,40 @@ function getNumericCep(cep?: string): number | null {
 
 export const MAX_PROXIMITY_KM = 30;
 
+export function isFreeOnlineOffer(service: ServiceItem): boolean {
+  return Boolean(
+    service.isNationalOnline &&
+      (service.accessMode === 'Online Imediato' || service.website || service.whatsapp)
+  );
+}
+
 /**
- * Filters and orders services strictly by proximity to the user's CEP/location:
- * - Physical regional services MUST be in the same state (UF) AND <= 30 km from the CEP,
- *   sorted strictly from closest to farthest (0 km -> 30 km).
- * - National online / 24h phone services follow immediately after local services.
+ * Filters and orders services:
+ * 1. Free online offers FIRST (`tier: 0`), for immediate access anywhere.
+ * 2. National 24h phone services (`tier: 1`), e.g. 190 / 188 / 129.
+ * 3. Physical regional services (`tier: 2`): MUST be in the same state (UF) AND <= 30 km
+ *    from the CEP, sorted strictly from closest to farthest (0 km -> 30 km).
  */
 export function sortServicesByCepProximity(
   services: ServiceItem[],
   location: CepInfo | null
 ): RankedServiceItem[] {
   if (!location) {
-    return services.map((service) => ({
+    const sortedWithoutLoc = [...services].sort((a, b) => {
+      const tierA = isFreeOnlineOffer(a) ? 0 : a.isNationalOnline ? 1 : 2;
+      const tierB = isFreeOnlineOffer(b) ? 0 : b.isNationalOnline ? 1 : 2;
+      if (tierA !== tierB) return tierA - tierB;
+      return a.name.localeCompare(b.name, 'pt-BR');
+    });
+
+    return sortedWithoutLoc.map((service) => ({
       service,
       distanceKm: null,
-      distanceLabel: null,
+      distanceLabel: isFreeOnlineOffer(service)
+        ? 'Oferta online gratuita · Acesso imediato'
+        : service.isNationalOnline
+        ? 'Atendimento nacional gratuito'
+        : null,
       isNearbyLocal: false,
     }));
   }
@@ -278,12 +297,15 @@ export function sortServicesByCepProximity(
 
   for (const service of services) {
     if (service.isNationalOnline) {
+      const onlineOffer = isFreeOnlineOffer(service);
       enriched.push({
         service,
         distanceKm: null,
-        distanceLabel: 'Atendimento nacional no seu CEP',
+        distanceLabel: onlineOffer
+          ? 'Oferta online gratuita · Atendimento imediato'
+          : 'Atendimento nacional gratuito 24h',
         isNearbyLocal: false,
-        tier: 1,
+        tier: onlineOffer ? 0 : 1,
         cepDiff: 0,
       });
       continue;
@@ -327,7 +349,7 @@ export function sortServicesByCepProximity(
       distanceKm,
       distanceLabel: formatDistanceLabel(distanceKm),
       isNearbyLocal: true,
-      tier: 0,
+      tier: 2,
       cepDiff,
     });
   }

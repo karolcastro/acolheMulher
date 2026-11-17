@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ServiceItem } from '../types';
-import { Phone, MapPin, Clock, MessageCircle, ExternalLink, Info } from 'lucide-react';
+import { isFreeOnlineOffer } from '../utils/cepProximity';
+import { Phone, MapPin, Clock, MessageCircle, ExternalLink, Info, Globe } from 'lucide-react';
 
 interface ServiceCardProps {
   service: ServiceItem;
@@ -9,13 +10,26 @@ interface ServiceCardProps {
 
 export const ServiceCard: React.FC<ServiceCardProps> = ({ service, distanceLabel }) => {
   const [showTips, setShowTips] = useState(false);
+  const isOnlineOffer = isFreeOnlineOffer(service);
 
   const mapQuery = service.address
-    ? encodeURIComponent(service.address)
-    : encodeURIComponent(`${service.name} ${service.city || ''}`);
+    ? encodeURIComponent(`${service.name}, ${service.address}`)
+    : typeof service.lat === 'number' && typeof service.lng === 'number'
+    ? encodeURIComponent(`${service.lat},${service.lng}`)
+    : encodeURIComponent(`${service.name} ${service.city || ''} ${service.state || ''}`);
+
+  const hasMapLocation =
+    !service.isNationalOnline &&
+    Boolean(service.address || (typeof service.lat === 'number' && typeof service.lng === 'number'));
 
   return (
-    <article className="bg-white rounded-2xl border border-slate-200/90 hover:border-pink-300 p-6 flex flex-col justify-between gap-5 shadow-xs hover:shadow-md transition-all duration-200">
+    <article
+      className={`bg-white rounded-2xl border p-6 flex flex-col justify-between gap-5 shadow-xs hover:shadow-md transition-all duration-200 ${
+        isOnlineOffer
+          ? 'border-purple-200 hover:border-pink-400'
+          : 'border-slate-200/90 hover:border-pink-300'
+      }`}
+    >
       <div className="space-y-3">
         {/* Clean Unboxed Metadata */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 font-medium">
@@ -45,11 +59,17 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({ service, distanceLabel
         {/* Location & Hours */}
         <div className="space-y-2 pt-1 text-xs text-slate-700">
           <div className="flex items-start gap-2">
-            <MapPin className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+            {isOnlineOffer ? (
+              <Globe className="w-4 h-4 text-purple-700 shrink-0 mt-0.5" />
+            ) : (
+              <MapPin className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+            )}
             <span className="leading-relaxed">
-              {service.isNationalOnline
-                ? 'Atendimento em todo o Brasil (telefone ou internet)'
-                : service.address || `${service.neighborhood || ''}, ${service.city} - ${service.state}`}
+              {isOnlineOffer
+                ? 'Atendimento online gratuito em todo o Brasil (sem precisar sair de casa)'
+                : service.isNationalOnline
+                ? 'Atendimento gratuito em todo o Brasil por telefone'
+                : service.address || `${service.neighborhood ? `${service.neighborhood}, ` : ''}${service.city} - ${service.state}`}
             </span>
           </div>
 
@@ -103,7 +123,7 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({ service, distanceLabel
           </a>
         )}
 
-        {service.address && (
+        {hasMapLocation && (
           <a
             href={`https://www.google.com/maps/search/?api=1&query=${mapQuery}`}
             target="_blank"

@@ -1,9 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AppSection, CepInfo } from '../types';
+import { AppSection, CepInfo, ServiceItem } from '../types';
 import { useCatalog } from '../context/CatalogContext';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
+import { useNearbySusUnits } from '../hooks/useNearbySusUnits';
 import { detectSectionIntent, normalizeText } from '../utils/voiceSearchParser';
-import { RankedServiceItem, sortServicesByCepProximity } from '../utils/cepProximity';
+import {
+  isFreeOnlineOffer,
+  RankedServiceItem,
+  sortServicesByCepProximity,
+} from '../utils/cepProximity';
 import { recordAnonymousSearchDemand } from '../utils/demandAnalytics';
 import {
   Sparkles,
@@ -21,7 +26,10 @@ import {
   Scale,
   Stethoscope,
   GraduationCap,
-  Users
+  Users,
+  MapPin,
+  Globe,
+  Building2
 } from 'lucide-react';
 
 interface SupportTriageAgentProps {
@@ -101,6 +109,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
   onClearLocation,
 }) => {
   const { nationalServices, regionalServices, ngos } = useCatalog();
+  const { nearbySusUnits, loadingNearbySus } = useNearbySusUnits(currentLocation);
   const [needInput, setNeedInput] = useState('');
   const [unclearNotice, setUnclearNotice] = useState<string | null>(null);
   const [showAllNearby, setShowAllNearby] = useState(false);
@@ -128,20 +137,20 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
 
     setUnclearNotice(null);
     const norm = normalizeText(trimmed);
-    if (/\b(tudo|todos|todas|perto|proxim\w*|geral)\b/.test(norm)) {
-      setNeedInput('');
-      setShowAllNearby(true);
-      onUpdateNeed(null, trimmed);
-      void recordAnonymousSearchDemand('geral', currentLocation);
-      return;
-    }
-
     const detected = detectSectionIntent(trimmed);
 
     if (detected && detected in SECTION_META) {
       setNeedInput('');
       setShowAllNearby(false);
       onUpdateNeed(detected, trimmed);
+      return;
+    }
+
+    if (/\b(tudo|todos|todas|perto|proxim\w*|geral|online|internet|virtual|whatsapp)\b/.test(norm)) {
+      setNeedInput('');
+      setShowAllNearby(true);
+      onUpdateNeed(null, trimmed);
+      void recordAnonymousSearchDemand('geral', currentLocation, 'triage_agent');
       return;
     }
 
@@ -199,49 +208,180 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       : null;
 
   const matchedPreview = useMemo(() => {
+    const mergeUnique = (base: ServiceItem[], extra: ServiceItem[]): ServiceItem[] => {
+      const seenIds = new Set<string>();
+      const seenNames = new Set<string>();
+      const out: ServiceItem[] = [];
+      for (const item of [...base, ...extra]) {
+        const key = item.name.trim().toLowerCase();
+        if (seenIds.has(item.id) || seenNames.has(key)) continue;
+        seenIds.add(item.id);
+        seenNames.add(key);
+        out.push(item);
+      }
+      return out;
+    };
+
     if (showAllNearby && !activeCategoryKey) {
-      const rankedAll = sortServicesByCepProximity(
+      const mergedAll = mergeUnique(
         [...regionalServices, ...nationalServices],
-        currentLocation
+        nearbySusUnits
       );
+      const rankedAll = sortServicesByCepProximity(mergedAll, currentLocation);
+      const onlineFirst = rankedAll.filter((r) => isFreeOnlineOffer(r.service));
+      const localAndPhone = rankedAll
+        .filter((r) => !isFreeOnlineOffer(r.service))
+        .slice(0, 14);
       return {
-        rankedServices: rankedAll.slice(0, 12),
+        onlineServices: onlineFirst,
+        localServices: localAndPhone,
         ngoItems: [],
         totalCount: rankedAll.length,
       };
     }
 
     if (!activeCategoryKey) {
-      return { rankedServices: [] as RankedServiceItem[], ngoItems: ngos.slice(0, 4), totalCount: 0 };
+      return {
+        onlineServices: [] as RankedServiceItem[],
+        localServices: [] as RankedServiceItem[],
+        ngoItems: ngos.slice(0, 4),
+        totalCount: 0,
+      };
     }
 
     if (activeCategoryKey === 'ongs_apoio') {
       return {
-        rankedServices: [] as RankedServiceItem[],
+        onlineServices: [] as RankedServiceItem[],
+        localServices: [] as RankedServiceItem[],
         ngoItems: ngos.slice(0, 5),
         totalCount: ngos.length,
       };
     }
 
-    const combined = [
-      ...regionalServices.filter((s) => s.category === activeCategoryKey),
-      ...nationalServices.filter((s) => s.category === activeCategoryKey),
-    ];
+    const relevantDynamicUnits =
+      activeCategoryKey === 'saude'
+        ? nearbySusUnits
+        : activeCategoryKey === 'emergencia'
+        ? nearbySusUnits.filter((u) => u.accessMode === 'Plantão 24h')
+        : activeCategoryKey === 'psicologico'
+        ? nearbySusUnits.filter(
+            (u) =>
+              u.subcategory.includes('UBS') ||
+              /\b(ubs|caps|posto|centro de saude|centro de saúde|saude da familia|saúde da família)\b/i.test(
+                u.name
+              )
+          )
+        : [];
+
+    const combined = mergeUnique(
+      [
+        ...regionalServices.filter((s) => s.category === activeCategoryKey),
+        ...nationalServices.filter((s) => s.category === activeCategoryKey),
+      ],
+      relevantDynamicUnits
+    );
 
     const ranked = sortServicesByCepProximity(combined, currentLocation);
+    const onlineFirst = ranked.filter((r) => isFreeOnlineOffer(r.service));
+    const localAndPhone = ranked
+      .filter((r) => !isFreeOnlineOffer(r.service))
+      .slice(0, 12);
 
     return {
-      rankedServices: ranked.slice(0, 8),
+      onlineServices: onlineFirst,
+      localServices: localAndPhone,
       ngoItems: [],
       totalCount: ranked.length,
     };
-  }, [activeCategoryKey, showAllNearby, currentLocation, nationalServices, regionalServices, ngos]);
+  }, [activeCategoryKey, showAllNearby, currentLocation, nationalServices, regionalServices, nearbySusUnits, ngos]);
 
   const hasResolvedView = Boolean(activeCategoryKey || showAllNearby);
 
   const locationLabel = currentLocation
     ? `${currentLocation.localidade} - ${currentLocation.uf}`
     : 'todo o Brasil';
+
+  const renderRankedRow = ({ service, distanceLabel }: RankedServiceItem) => {
+    const isOnline = isFreeOnlineOffer(service);
+    const mapQuery = service.address
+      ? encodeURIComponent(`${service.name}, ${service.address}`)
+      : typeof service.lat === 'number' && typeof service.lng === 'number'
+      ? encodeURIComponent(`${service.lat},${service.lng}`)
+      : encodeURIComponent(`${service.name} ${service.city || ''} ${service.state || ''}`);
+    const hasMap =
+      !service.isNationalOnline &&
+      Boolean(service.address || (typeof service.lat === 'number' && typeof service.lng === 'number'));
+
+    return (
+      <div
+        key={service.id}
+        className={`rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+          isOnline
+            ? 'bg-purple-50/70 border-purple-200'
+            : 'bg-slate-50 border-slate-200/90'
+        }`}
+      >
+        <div className="min-w-0 space-y-0.5">
+          <div className="text-[11px] font-semibold text-pink-700 truncate">
+            {service.subcategory} · {service.isNationalOnline ? 'Online / Todo o Brasil' : `${service.city} - ${service.state}`}
+            {distanceLabel ? ' · ' : ''}
+            {distanceLabel && <span className="text-purple-800">{distanceLabel}</span>}
+          </div>
+          <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+            {service.name}
+          </div>
+          <div className="text-[11px] text-slate-600 truncate">
+            {service.address ? `${service.address} · ` : ''}{service.hours}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          {service.whatsapp && (
+            <a
+              href={`https://wa.me/${service.whatsapp}?text=Olá,%20preciso%20de%20orientação%20e%20apoio.`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-h-[36px] inline-flex items-center gap-1 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+            >
+              <MessageCircle className="w-3 h-3" />
+              <span>WhatsApp</span>
+            </a>
+          )}
+          {service.website && (
+            <a
+              href={service.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-h-[36px] inline-flex items-center gap-1 px-3 py-1.5 bg-pink-600 hover:bg-pink-700 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+            >
+              <span>Acessar Online</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+          {service.phone && (
+            <a
+              href={`tel:${service.phone.replace(/\D/g, '')}`}
+              className="min-h-[36px] inline-flex items-center gap-1 px-3 py-1.5 bg-blue-900 hover:bg-blue-950 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+            >
+              <Phone className="w-3 h-3" />
+              <span>{service.phone}</span>
+            </a>
+          )}
+          {hasMap && (
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${mapQuery}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-h-[36px] inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+            >
+              <MapPin className="w-3 h-3" />
+              <span>Mapa</span>
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -410,7 +550,7 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
               onClick={() => {
                 setUnclearNotice(null);
                 setShowAllNearby(true);
-                void recordAnonymousSearchDemand('geral', currentLocation);
+                void recordAnonymousSearchDemand('geral', currentLocation, 'triage_agent');
               }}
               className="col-span-2 sm:col-span-3 min-h-[38px] px-3 py-2 rounded-xl border border-blue-200 bg-blue-50/80 hover:bg-blue-800 text-blue-900 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all"
             >
@@ -449,68 +589,55 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
             </div>
           )}
 
-          {/* Ordered Results Nearest-to-Farthest Right Inside the Agent */}
-          {currentLocation && matchedPreview.rankedServices.length > 0 && (
-            <div className="text-[11px] font-semibold text-purple-900">
-              Locais em até 30 km em {currentLocation.uf} (mais próximos primeiro) + atendimento nacional:
-            </div>
-          )}
-
-          <div className="space-y-2 max-h-[280px] overflow-y-auto pr-0.5">
-            {matchedPreview.rankedServices.map(({ service, distanceLabel }) => (
-              <div
-                key={service.id}
-                className="bg-slate-50 rounded-xl border border-slate-200/90 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-              >
-                <div className="min-w-0 space-y-0.5">
-                  <div className="text-[11px] font-semibold text-pink-700 truncate">
-                    {service.subcategory} · {service.isNationalOnline ? 'Todo o Brasil' : `${service.city} - ${service.state}`}
-                    {distanceLabel ? ` · ` : ''}
-                    {distanceLabel && <span className="text-purple-800">{distanceLabel}</span>}
-                  </div>
-                  <div className="text-xs sm:text-sm font-bold text-slate-900 truncate">
-                    {service.name}
-                  </div>
-                  <div className="text-[11px] text-slate-600 truncate">
-                    {service.address ? `${service.address} · ` : ''}{service.hours}
-                  </div>
+          {/* 1. Free Online Offers FIRST + 2. Nearby UBSs, Hospitals and Local Units (<= 30 km) */}
+          <div className="space-y-3 max-h-[380px] overflow-y-auto pr-0.5">
+            {matchedPreview.onlineServices.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[11px] font-bold text-purple-900 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-pink-600 shrink-0" />
+                  <span>1. Ofertas Online Gratuitas · Atendimento Imediato</span>
                 </div>
+                {matchedPreview.onlineServices.map(renderRankedRow)}
+              </div>
+            )}
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {service.phone && (
+            {(matchedPreview.localServices.length > 0 || loadingNearbySus) && (
+              <div className="space-y-2 pt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[11px] font-bold text-blue-950 flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                    <span>
+                      {currentLocation
+                        ? `2. UBSs, Hospitais e Locais Próximos em ${currentLocation.localidade} - ${currentLocation.uf} (até 30 km)`
+                        : '2. Telefones 24h e Locais Presenciais'}
+                    </span>
+                  </div>
+
+                  {currentLocation && (
                     <a
-                      href={`tel:${service.phone.replace(/\D/g, '')}`}
-                      className="min-h-[36px] inline-flex items-center gap-1 px-3 py-1.5 bg-blue-900 hover:bg-blue-950 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
-                    >
-                      <Phone className="w-3 h-3" />
-                      <span>{service.phone}</span>
-                    </a>
-                  )}
-                  {service.whatsapp && (
-                    <a
-                      href={`https://wa.me/${service.whatsapp}?text=Olá,%20preciso%20de%20orientação%20e%20apoio.`}
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                        `UBS Posto de Saude Hospital SUS perto de ${currentLocation.localidade} ${currentLocation.uf}`
+                      )}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="min-h-[36px] inline-flex items-center gap-1 px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+                      className="text-[11px] font-semibold text-blue-800 hover:text-pink-700 inline-flex items-center gap-1 underline underline-offset-2"
                     >
-                      <MessageCircle className="w-3 h-3" />
-                      <span>WhatsApp</span>
-                    </a>
-                  )}
-                  {!service.phone && !service.whatsapp && service.website && (
-                    <a
-                      href={service.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="min-h-[36px] inline-flex items-center gap-1 px-3 py-1.5 bg-pink-600 hover:bg-pink-700 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
-                    >
-                      <span>Site</span>
+                      <span>Abrir UBSs e Hospitais no Mapa</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   )}
                 </div>
+
+                {loadingNearbySus && currentLocation && (
+                  <div className="text-[11px] text-purple-800 flex items-center gap-1.5 py-1">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-pink-600 shrink-0" />
+                    <span>Buscando UBSs e hospitais públicos perto do seu CEP...</span>
+                  </div>
+                )}
+
+                {matchedPreview.localServices.map(renderRankedRow)}
               </div>
-            ))}
+            )}
 
             {matchedPreview.ngoItems.map((ngo) => (
               <div

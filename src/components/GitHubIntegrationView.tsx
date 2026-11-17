@@ -8,14 +8,16 @@ export const GitHubIntegrationView: React.FC = () => {
   const [repoData, setRepoData] = useState<any>(null);
   const [copiedTemplate, setCopiedTemplate] = useState(false);
   const [demandStats, setDemandStats] = useState<DemandStatRow[]>([]);
+  const [isStarSchemaActive, setIsStarSchemaActive] = useState(false);
   const [demandError, setDemandError] = useState<string | null>(null);
   const [loadingDemand, setLoadingDemand] = useState(false);
 
   const loadDemandStats = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     setLoadingDemand(true);
-    const { rows, error } = await fetchRecentDemandStats(18);
+    const { rows, isStarSchema, error } = await fetchRecentDemandStats(18);
     setDemandStats(rows);
+    setIsStarSchemaActive(isStarSchema);
     setDemandError(error);
     setLoadingDemand(false);
   }, [isSupabaseConfigured]);
@@ -278,12 +280,15 @@ export const GitHubIntegrationView: React.FC = () => {
         </div>
       </div>
 
-      {/* Anonymous Regional & Topic Demand Stats */}
+      {/* Anonymous Regional & Topic Demand Stats (Star Schema) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-8 space-y-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-display font-bold text-slate-900">
             <BarChart3 className="w-4 h-4 text-purple-700 shrink-0" />
-            <span>Últimos Assuntos &amp; Regiões Buscadas (Totais Anônimos)</span>
+            <span>
+              Últimos Assuntos &amp; Regiões Buscadas
+              {isStarSchemaActive ? ' (Star Schema · Anônimo)' : ' (Totais Anônimos)'}
+            </span>
           </div>
           {isSupabaseConfigured && (
             <button
@@ -299,7 +304,7 @@ export const GitHubIntegrationView: React.FC = () => {
         </div>
 
         <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-          Registro diário agregado por assunto e Cidade/UF para identificar onde há mais demanda por apoio gratuito — <strong>sem nunca armazenar CEP completo, IP, voz ou histórico individual</strong>.
+          Modelo <strong>Star Schema</strong> (<code className="font-mono text-purple-900">fact_search_demand</code> + dimensões de data, assunto, região e canal) com RLS estrito — <strong>sem nunca armazenar CEP completo, IP, voz ou histórico individual</strong>.
         </p>
 
         {!isSupabaseConfigured ? (
@@ -308,12 +313,12 @@ export const GitHubIntegrationView: React.FC = () => {
               Pronto para conectar ao seu Supabase
             </p>
             <p>
-              Execute <code className="font-mono text-purple-900">supabase/migrations/003_search_demand_stats.sql</code> no SQL Editor do Supabase e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel para acompanhar os totais aqui.
+              Execute <code className="font-mono text-purple-900">supabase/migrations/004_normalized_star_schema_rls.sql</code> no SQL Editor do Supabase e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel para acompanhar os totais aqui.
             </p>
           </div>
         ) : demandError ? (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-950">
-            {demandError} Execute o script <code className="font-mono">003_search_demand_stats.sql</code> no SQL Editor do Supabase.
+            {demandError} Execute o script <code className="font-mono">004_normalized_star_schema_rls.sql</code> no SQL Editor do Supabase.
           </div>
         ) : demandStats.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600">
@@ -335,8 +340,21 @@ export const GitHubIntegrationView: React.FC = () => {
                   <div className="text-[11px] text-slate-600 flex items-center gap-1 truncate">
                     <MapPin className="w-3 h-3 text-blue-700 shrink-0" />
                     <span>{row.city} - {row.state}</span>
-                    <span className="text-slate-300" aria-hidden="true">·</span>
+                    {row.macro_region && (
+                      <>
+                        <span className="text-slate-300" aria-hidden="true">·</span>
+                        <span>{row.macro_region}</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-slate-500 flex items-center gap-1 truncate">
                     <span>{row.demand_date}</span>
+                    {row.channel_label && (
+                      <>
+                        <span className="text-slate-300" aria-hidden="true">·</span>
+                        <span>{row.channel_label}</span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <span className="px-2.5 py-1 rounded-lg bg-purple-100 text-purple-950 text-xs font-bold tabular-nums shrink-0">

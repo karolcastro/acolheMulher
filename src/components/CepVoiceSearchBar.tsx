@@ -8,6 +8,7 @@ export interface SearchResolvedPayload {
   cepInfo?: CepInfo;
   suggestedSection?: AppSection;
   rawQuery: string;
+  sourceChannel: 'web_cep' | 'web_voice';
 }
 
 interface CepVoiceSearchBarProps {
@@ -32,7 +33,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastSpokenText, setLastSpokenText] = useState<string | null>(null);
 
-  const runLookup = async (rawValue: string) => {
+  const runLookup = async (rawValue: string, sourceChannel: 'web_cep' | 'web_voice' = 'web_cep') => {
     const trimmed = rawValue.trim();
     if (!trimmed) {
       setErrorMessage('Digite seu CEP, cidade ou toque no microfone para falar.');
@@ -61,6 +62,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
           cepInfo: result.cepInfo,
           suggestedSection: result.suggestedSection,
           rawQuery: trimmed,
+          sourceChannel,
         });
         return;
       }
@@ -91,7 +93,7 @@ export const CepVoiceSearchBar: React.FC<CepVoiceSearchBarProps> = ({
     onFinalTranscript: (transcript) => {
       setLastSpokenText(transcript);
       setQueryInput(transcript);
-      void runLookup(transcript);
+      void runLookup(transcript, 'web_voice');
     },
   });
 

@@ -52,18 +52,25 @@ export const HomeView: React.FC<HomeViewProps> = ({
     if (payload.suggestedSection) {
       setSelectedNeed(payload.suggestedSection);
       setLastUserNeedText(payload.rawQuery);
-      void recordAnonymousSearchDemand(payload.suggestedSection, resolvedLocation);
+      void recordAnonymousSearchDemand(
+        payload.suggestedSection,
+        resolvedLocation,
+        payload.sourceChannel
+      );
     } else {
       setSelectedNeed(null);
       setLastUserNeedText(null);
       if (resolvedLocation) {
-        void recordAnonymousSearchDemand('geral', resolvedLocation);
+        void recordAnonymousSearchDemand('geral', resolvedLocation, payload.sourceChannel);
       }
     }
   };
 
-  const handleOpenSection = (section: AppSection) => {
-    void recordAnonymousSearchDemand(section, currentLocation);
+  const handleOpenSection = (
+    section: AppSection,
+    channel: 'category_card' | 'triage_agent' = 'category_card'
+  ) => {
+    void recordAnonymousSearchDemand(section, currentLocation, channel);
     onSelectSection(section);
   };
 
@@ -279,10 +286,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     setSelectedNeed(section);
                     setLastUserNeedText(userText ?? null);
                     if (section) {
-                      void recordAnonymousSearchDemand(section, currentLocation);
+                      void recordAnonymousSearchDemand(section, currentLocation, 'triage_agent');
                     }
                   }}
-                  onOpenSection={handleOpenSection}
+                  onOpenSection={(section) => handleOpenSection(section, 'triage_agent')}
                   onClearLocation={() => {
                     onUpdateLocation(null);
                     setSelectedNeed(null);

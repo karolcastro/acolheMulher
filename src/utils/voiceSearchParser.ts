@@ -251,6 +251,32 @@ export interface LocationResolutionResult {
   error?: string;
 }
 
+async function geocodeBrazilPlace(query: string): Promise<{ lat: number; lng: number } | null> {
+  if (typeof window === 'undefined') return null;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 2200);
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&countrycodes=br&limit=1&q=${encodeURIComponent(
+        query
+      )}`,
+      { signal: controller.signal }
+    );
+    if (!res.ok) return null;
+    const arr = (await res.json()) as Array<{ lat?: string; lon?: string }>;
+    const lat = Number(arr[0]?.lat);
+    const lng = Number(arr[0]?.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { lat, lng };
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 export async function resolveLocationQuery(rawQuery: string): Promise<LocationResolutionResult> {
   const trimmed = rawQuery.trim();
   const suggestedSection = detectSectionIntent(trimmed);
@@ -293,18 +319,36 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
 
       const city = data.localidade || geoExtra.fallbackData?.city || '';
       const uf = data.uf || geoExtra.fallbackData?.state || '';
+      const street = data.logradouro || geoExtra.fallbackData?.street || '';
+      const neighborhood = data.bairro || geoExtra.fallbackData?.neighborhood || '';
       const estimated = estimateCoordinatesForCepAndCity(formatted, city, uf);
+
+      let resolvedLat = geoExtra.lat;
+      let resolvedLng = geoExtra.lng;
+
+      if ((typeof resolvedLat !== 'number' || typeof resolvedLng !== 'number') && city && uf) {
+        const placeQuery = street
+          ? `${street}, ${city}, ${uf}, Brasil`
+          : neighborhood
+          ? `${neighborhood}, ${city}, ${uf}, Brasil`
+          : `${city}, ${uf}, Brasil`;
+        const geocoded = await geocodeBrazilPlace(placeQuery);
+        if (geocoded) {
+          resolvedLat = geocoded.lat;
+          resolvedLng = geocoded.lng;
+        }
+      }
 
       return {
         cepInfo: {
           cep: data.cep || formatted,
-          logradouro: data.logradouro || geoExtra.fallbackData?.street || '',
-          bairro: data.bairro || geoExtra.fallbackData?.neighborhood || '',
+          logradouro: street,
+          bairro: neighborhood,
           localidade: city,
           uf,
           ddd: data.ddd,
-          lat: geoExtra.lat ?? estimated?.lat,
-          lng: geoExtra.lng ?? estimated?.lng,
+          lat: resolvedLat ?? estimated?.lat,
+          lng: resolvedLng ?? estimated?.lng,
         },
         formattedInput: formatted,
         suggestedSection,
@@ -363,6 +407,7 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
             cityObj?.microrregiao?.mesorregiao?.UF?.sigla ||
             cityObj?.['regiao-imediata']?.['regiao-intermediaria']?.UF?.sigla;
           if (cityObj?.nome && ufSigla) {
+            const geocoded = await geocodeBrazilPlace(`${cityObj.nome}, ${ufSigla}, Brasil`);
             const estimated = estimateCoordinatesForCepAndCity(undefined, cityObj.nome, ufSigla);
             return {
               cepInfo: {
@@ -371,8 +416,8 @@ export async function resolveLocationQuery(rawQuery: string): Promise<LocationRe
                 bairro: '',
                 localidade: cityObj.nome,
                 uf: ufSigla,
-                lat: estimated?.lat,
-                lng: estimated?.lng,
+                lat: geocoded?.lat ?? estimated?.lat,
+                lng: geocoded?.lng ?? estimated?.lng,
               },
               formattedInput: `${cityObj.nome} - ${ufSigla}`,
               suggestedSection,

@@ -91,15 +91,30 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const loadInitialCatalog = async () => {
       try {
-        const [servicesResult, ngosResult] = await Promise.all([
-          client
+        const loadServicesWithFallback = async () => {
+          const extended = await client
+            .from('services')
+            .select(
+              'id, name, category, subcategory, description, is_national_online, state, city, neighborhood, address, cep, lat, lng, phone, whatsapp, website, hours, access_mode, requires_registration, free_confirmation, tags, tips_for_woman, is_verified, is_active'
+            )
+            .eq('is_active', true)
+            .eq('is_verified', true)
+            .eq('requires_registration', false);
+
+          if (!extended.error) return extended;
+
+          return client
             .from('services')
             .select(
               'id, name, category, subcategory, description, is_national_online, state, city, neighborhood, address, phone, whatsapp, website, hours, access_mode, requires_registration, free_confirmation, tags, tips_for_woman, is_verified, is_active'
             )
             .eq('is_active', true)
             .eq('is_verified', true)
-            .eq('requires_registration', false),
+            .eq('requires_registration', false);
+        };
+
+        const [servicesResult, ngosResult] = await Promise.all([
+          loadServicesWithFallback(),
           client
             .from('ngos')
             .select(

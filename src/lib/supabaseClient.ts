@@ -44,6 +44,9 @@ export interface SupabaseServiceRow {
   city: string | null;
   neighborhood: string | null;
   address: string | null;
+  cep?: string | null;
+  lat?: number | null;
+  lng?: number | null;
   phone: string | null;
   whatsapp: string | null;
   website: string | null;
@@ -140,6 +143,9 @@ export function mapRowToServiceItem(row: SupabaseServiceRow): ServiceItem {
     city: row.city ?? undefined,
     neighborhood: row.neighborhood ?? undefined,
     address: row.address ?? undefined,
+    cep: row.cep ?? undefined,
+    lat: typeof row.lat === 'number' ? row.lat : undefined,
+    lng: typeof row.lng === 'number' ? row.lng : undefined,
     phone: row.phone ?? undefined,
     whatsapp: row.whatsapp ?? undefined,
     website: sanitizeExternalUrl(row.website),

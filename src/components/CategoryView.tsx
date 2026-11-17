@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { ServiceCategory, CepInfo } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ServiceCategory, CepInfo, ServiceItem } from '../types';
 import { useCatalog } from '../context/CatalogContext';
 import { ServiceCard } from './ServiceCard';
 import { CepVoiceSearchBar } from './CepVoiceSearchBar';
-import { RankedServiceItem, sortServicesByCepProximity } from '../utils/cepProximity';
+import {
+  isFreeOnlineOffer,
+  RankedServiceItem,
+  sortServicesByCepProximity,
+} from '../utils/cepProximity';
+import { useNearbySusUnits } from '../hooks/useNearbySusUnits';
 import { recordAnonymousSearchDemand } from '../utils/demandAnalytics';
-import { MapPin, ArrowLeft, ExternalLink } from 'lucide-react';
+import { MapPin, ArrowLeft, ExternalLink, Globe, Building2, RefreshCw } from 'lucide-react';
 
 type HealthSubFilter = 'todos' | 'parto' | 'exames' | 'sus';
 
@@ -19,6 +24,21 @@ interface CategoryViewProps {
   onBackToHome: () => void;
 }
 
+function mergeUniqueServices(base: ServiceItem[], dynamicUnits: ServiceItem[]): ServiceItem[] {
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+  const merged: ServiceItem[] = [];
+
+  for (const item of [...base, ...dynamicUnits]) {
+    const normName = item.name.trim().toLowerCase();
+    if (seenIds.has(item.id) || seenNames.has(normName)) continue;
+    seenIds.add(item.id);
+    seenNames.add(normName);
+    merged.push(item);
+  }
+  return merged;
+}
+
 export const CategoryView: React.FC<CategoryViewProps> = ({
   category,
   title,
@@ -28,6 +48,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
   onBackToHome
 }) => {
   const { nationalServices, regionalServices, ngos } = useCatalog();
+  const { nearbySusUnits, loadingNearbySus } = useNearbySusUnits(currentLocation);
   const [showCepChange, setShowCepChange] = useState(!currentLocation);
   const [healthFilter, setHealthFilter] = useState<HealthSubFilter>('todos');
 
@@ -41,7 +62,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     }
   }, [currentLocation]);
 
-  const rankedServices: RankedServiceItem[] = React.useMemo(() => {
+  const rankedServices: RankedServiceItem[] = useMemo(() => {
     const matchingNational = nationalServices.filter(
       (s) => s.category === category
     );
@@ -49,7 +70,25 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
       (s) => s.category === category
     );
 
-    let combined = [...matchingRegional, ...matchingNational];
+    const relevantSusUnits =
+      category === 'saude'
+        ? nearbySusUnits
+        : category === 'emergencia'
+        ? nearbySusUnits.filter((u) => u.accessMode === 'Plantão 24h')
+        : category === 'psicologico'
+        ? nearbySusUnits.filter(
+            (u) =>
+              u.subcategory.includes('UBS') ||
+              /\b(ubs|caps|posto|centro de saude|centro de saúde|saude da familia|saúde da família)\b/i.test(
+                u.name
+              )
+          )
+        : [];
+
+    let combined = mergeUniqueServices(
+      [...matchingRegional, ...matchingNational],
+      relevantSusUnits
+    );
 
     if (category === 'saude' && healthFilter !== 'todos') {
       combined = combined.filter((s) => {
@@ -70,7 +109,17 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     }
 
     return sortServicesByCepProximity(combined, currentLocation);
-  }, [category, currentLocation, healthFilter, nationalServices, regionalServices]);
+  }, [category, currentLocation, healthFilter, nationalServices, regionalServices, nearbySusUnits]);
+
+  const onlineOfferServices = useMemo(
+    () => rankedServices.filter((item) => isFreeOnlineOffer(item.service)),
+    [rankedServices]
+  );
+
+  const localAndPhoneServices = useMemo(
+    () => rankedServices.filter((item) => !isFreeOnlineOffer(item.service)),
+    [rankedServices]
+  );
 
   const matchingNgos = ngos.filter((ngo) =>
     ngo.relatedCategories.includes(
@@ -82,8 +131,20 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
     { id: 'todos', label: 'Todos' },
     { id: 'parto', label: 'Parto Humanizado' },
     { id: 'exames', label: 'Exames Gratuitos' },
-    { id: 'sus', label: 'Hospitais & SUS' },
+    { id: 'sus', label: 'UBSs, Hospitais & SUS' },
   ];
+
+  const showSusMapShortcut =
+    Boolean(currentLocation) &&
+    (category === 'saude' || category === 'emergencia' || category === 'psicologico');
+
+  const mapsSusUrl = currentLocation
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        category === 'emergencia'
+          ? `Hospital UPA Delegacia da Mulher perto de ${currentLocation.localidade} ${currentLocation.uf}`
+          : `UBS Posto de Saude Hospital SUS perto de ${currentLocation.localidade} ${currentLocation.uf}`
+      )}`
+    : '';
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
@@ -113,7 +174,7 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
             <div className="flex flex-wrap items-center gap-2 text-slate-700">
               <MapPin className="w-4 h-4 text-blue-700 shrink-0" />
               <span>
-                Mostrando locais em até 30 km no seu estado, do mais próximo ao mais distante de{' '}
+                Mostrando <strong>ofertas online gratuitas primeiro</strong> e unidades em até 30 km de{' '}
                 <strong>
                   {currentLocation.localidade} - {currentLocation.uf}
                   {currentLocation.cep && currentLocation.cep !== '00000-000' ? ` (${currentLocation.cep})` : ''}
@@ -161,25 +222,96 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
         )}
       </div>
 
-      {/* Services Grid Ordered by Distance from CEP */}
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {rankedServices.map(({ service, distanceLabel }) => (
-            <ServiceCard key={service.id} service={service} distanceLabel={distanceLabel} />
-          ))}
+      {/* 1. Free Online Offers FIRST */}
+      {onlineOfferServices.length > 0 && (
+        <section className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-display font-bold text-purple-950 flex items-center gap-2">
+              <Globe className="w-5 h-5 text-pink-600 shrink-0" />
+              <span>1. Ofertas Online Gratuitas · Atendimento Imediato</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600">
+              Acesso gratuito pela internet, WhatsApp ou telefone de qualquer cidade do Brasil, sem precisar sair de casa.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {onlineOfferServices.map(({ service, distanceLabel }) => (
+              <ServiceCard key={service.id} service={service} distanceLabel={distanceLabel} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 2. Nearby UBSs, Hospitals, 24h Phones & Local Services */}
+      <section className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="space-y-1">
+            <h2 className="text-lg font-display font-bold text-slate-900 flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-blue-800 shrink-0" />
+              <span>
+                {currentLocation
+                  ? `2. UBSs, Hospitais e Locais Próximos em ${currentLocation.localidade} - ${currentLocation.uf} (até 30 km)`
+                  : '2. Telefones 24h e Unidades Presenciais'}
+              </span>
+            </h2>
+            {!currentLocation && (
+              <p className="text-xs text-slate-600">
+                Informe seu CEP ou cidade acima para localizar UBSs, Postos de Saúde e Hospitais públicos perto de você.
+              </p>
+            )}
+          </div>
+
+          {showSusMapShortcut && (
+            <a
+              href={mapsSusUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-h-[40px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 text-xs font-semibold transition-colors whitespace-nowrap self-start sm:self-auto"
+            >
+              <MapPin className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+              <span>Ver UBSs e Hospitais no Mapa</span>
+              <ExternalLink className="w-3 h-3 shrink-0" />
+            </a>
+          )}
         </div>
 
-        {rankedServices.length === 0 && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-2">
+        {loadingNearbySus && currentLocation && (category === 'saude' || category === 'emergencia' || category === 'psicologico') && (
+          <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 text-xs text-purple-950 flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 animate-spin text-pink-600 shrink-0" />
+            <span>Buscando UBSs, Postos de Saúde, UPAs e Hospitais próximos a {currentLocation.localidade} - {currentLocation.uf}...</span>
+          </div>
+        )}
+
+        {localAndPhoneServices.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {localAndPhoneServices.map(({ service, distanceLabel }) => (
+              <ServiceCard key={service.id} service={service} distanceLabel={distanceLabel} />
+            ))}
+          </div>
+        )}
+
+        {rankedServices.length === 0 && !loadingNearbySus && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-3">
             <p className="text-sm font-medium text-slate-800">
               Nenhum serviço específico encontrado para este filtro ou CEP.
             </p>
             <p className="text-xs text-slate-600">
               Experimente selecionar "Todos" ou ligar gratuitamente para o <strong>136</strong> (Disque Saúde) ou <strong>180</strong>.
             </p>
+            {showSusMapShortcut && (
+              <a
+                href={mapsSusUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-h-[42px] inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-900 text-white text-xs font-semibold hover:bg-blue-950 transition-colors"
+              >
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                <span>Abrir UBSs e Hospitais perto de {currentLocation?.localidade}</span>
+              </a>
+            )}
           </div>
         )}
-      </div>
+      </section>
 
       {/* Matching NGOs */}
       {matchingNgos.length > 0 && (
