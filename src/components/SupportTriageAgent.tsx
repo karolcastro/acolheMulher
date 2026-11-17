@@ -14,6 +14,7 @@ import {
 import {
   DemandAccessChannel,
   recordAnonymousSearchDemand,
+  recordVoiceSearchRelational,
 } from '../utils/demandAnalytics';
 import { normalizeNgoNameKey } from '../lib/supabaseClient';
 import {
@@ -171,7 +172,9 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       setNeedInput('');
       setShowAllNearby(true);
       onUpdateNeed(null, trimmed, sourceChannel);
-      void recordAnonymousSearchDemand('geral', currentLocation, sourceChannel);
+      if (sourceChannel !== 'web_voice') {
+        void recordAnonymousSearchDemand('geral', currentLocation, sourceChannel);
+      }
       return;
     }
 
@@ -201,7 +204,11 @@ export const SupportTriageAgent: React.FC<SupportTriageAgentProps> = ({
       return;
     }
 
-    void recordAnonymousSearchDemand('geral', currentLocation, sourceChannel);
+    if (sourceChannel === 'web_voice') {
+      void recordVoiceSearchRelational(trimmed, 'geral', currentLocation);
+    } else {
+      void recordAnonymousSearchDemand('geral', currentLocation, sourceChannel);
+    }
     setUnclearNotice(
       `Não identifiquei exatamente "${trimmed}". Toque em uma das opções abaixo ou tente palavras como "psicóloga", "advogada", "delegacia", "exame" ou "curso".`
     );

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useCatalog } from '../context/CatalogContext';
-import { fetchRecentDemandStats, type DemandStatRow } from '../utils/demandAnalytics';
-import { Github, ExternalLink, Download, GitPullRequest, Code, Check, Sparkles, Layers, ShieldCheck, Database, BarChart3, RefreshCw, MapPin } from 'lucide-react';
+import { fetchRecentDemandStats, type DemandStatRow, type VoiceSearchStatRow } from '../utils/demandAnalytics';
+import mysqlSchemaSql from '../../database/mysql/acolhemulher_mysql8_star_schema_utf8mb4.sql?raw';
+import { Github, ExternalLink, Download, GitPullRequest, Code, Check, Sparkles, Layers, ShieldCheck, Database, BarChart3, RefreshCw, MapPin, Mic } from 'lucide-react';
 
 export const GitHubIntegrationView: React.FC = () => {
   const { nationalServices, regionalServices, ngos, isLiveConnected, isSupabaseConfigured } = useCatalog();
   const [repoData, setRepoData] = useState<any>(null);
   const [copiedTemplate, setCopiedTemplate] = useState(false);
   const [demandStats, setDemandStats] = useState<DemandStatRow[]>([]);
+  const [voiceStats, setVoiceStats] = useState<VoiceSearchStatRow[]>([]);
   const [totalSearches, setTotalSearches] = useState(0);
   const [isStarSchemaActive, setIsStarSchemaActive] = useState(false);
   const [demandError, setDemandError] = useState<string | null>(null);
@@ -16,8 +18,9 @@ export const GitHubIntegrationView: React.FC = () => {
   const loadDemandStats = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     setLoadingDemand(true);
-    const { rows, totalSearches: total, isStarSchema, error } = await fetchRecentDemandStats(24);
+    const { rows, voiceRows, totalSearches: total, isStarSchema, error } = await fetchRecentDemandStats(24);
     setDemandStats(rows);
+    setVoiceStats(voiceRows);
     setTotalSearches(total);
     setIsStarSchemaActive(isStarSchema);
     setDemandError(error);
@@ -62,6 +65,16 @@ export const GitHubIntegrationView: React.FC = () => {
     const a = document.createElement('a');
     a.href = url;
     a.download = 'acolhemulher_base_servicos_gratuitos.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadMySqlSchema = () => {
+    const blob = new Blob([mysqlSchemaSql], { type: 'application/sql;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'acolhemulher_mysql8_star_schema_utf8mb4.sql';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -181,18 +194,28 @@ export const GitHubIntegrationView: React.FC = () => {
             </p>
           </div>
 
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+          <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs text-slate-500 font-mono">
               {nationalServices.length + regionalServices.length} serviços · {ngos.length} ONGs
             </span>
-            <button
-              type="button"
-              onClick={handleDownloadJSON}
-              className="min-h-[40px] inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-blue-900 hover:bg-blue-950 text-white rounded-xl transition-colors whitespace-nowrap"
-            >
-              <Download className="w-3.5 h-3.5 shrink-0" />
-              <span>Baixar Dados (.json)</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadMySqlSchema}
+                className="min-h-[40px] inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-purple-50 hover:bg-purple-100 text-purple-950 border border-purple-200 rounded-xl transition-colors whitespace-nowrap"
+              >
+                <Database className="w-3.5 h-3.5 shrink-0 text-purple-700" />
+                <span>Schema MySQL 8.0 UTF-8 (.sql)</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadJSON}
+                className="min-h-[40px] inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-blue-900 hover:bg-blue-950 text-white rounded-xl transition-colors whitespace-nowrap"
+              >
+                <Download className="w-3.5 h-3.5 shrink-0" />
+                <span>Baixar Dados (.json)</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -311,21 +334,21 @@ export const GitHubIntegrationView: React.FC = () => {
         </div>
 
         <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-          Modelo <strong>Star Schema</strong> (<code className="font-mono text-purple-900">fact_search_demand</code> + dimensões de data, assunto, região e canal) com RLS estrito — registra toda busca por CEP, voz, agente, categoria, subfiltro e diretório de ONGs, <strong>sem nunca armazenar CEP completo, IP, voz ou histórico individual</strong>.
+          Modelo <strong>Star Schema 3FN/1FN</strong> (<code className="font-mono text-purple-900">fact_search_demand</code>, <code className="font-mono text-purple-900">fact_voice_searches</code> + dimensões sem acentos em UTF-8) com RLS estrito em tudo — registra toda busca por CEP, voz, agente, categoria, subfiltro e diretório de ONGs, <strong>sem nunca armazenar CEP completo, IP, áudio ou histórico individual</strong>. Disponível também em script completo para <strong>MySQL 8.0+ (utf8mb4)</strong>.
         </p>
 
         {!isSupabaseConfigured ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-700 space-y-1.5">
             <p className="font-semibold text-slate-900">
-              Pronto para conectar ao seu Supabase
+              Pronto para conectar ao seu Supabase ou exportar em MySQL 8.0+
             </p>
             <p>
-              Execute <code className="font-mono text-purple-900">supabase/migrations/004_normalized_star_schema_rls.sql</code> e <code className="font-mono text-purple-900">005_ngos_dedupe_and_complete_search_tracking.sql</code> no SQL Editor do Supabase e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel para acompanhar os totais aqui.
+              No Supabase, execute os scripts <code className="font-mono text-purple-900">004_normalized_star_schema_rls.sql</code>, <code className="font-mono text-purple-900">005_ngos_dedupe_and_complete_search_tracking.sql</code> e <code className="font-mono text-purple-900">006_strict_3nf_star_schema_voice_rls.sql</code> e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel. Para MySQL 8.0+ (<code className="font-mono">utf8mb4</code>), baixe o schema completo acima.
             </p>
           </div>
         ) : demandError ? (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-950">
-            {demandError} Execute os scripts <code className="font-mono">004_normalized_star_schema_rls.sql</code> e <code className="font-mono">005_ngos_dedupe_and_complete_search_tracking.sql</code> no SQL Editor do Supabase.
+            {demandError} Execute os scripts <code className="font-mono">004</code>, <code className="font-mono">005</code> e <code className="font-mono">006_strict_3nf_star_schema_voice_rls.sql</code> no SQL Editor do Supabase.
           </div>
         ) : demandStats.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600">
@@ -369,6 +392,42 @@ export const GitHubIntegrationView: React.FC = () => {
                 </span>
               </div>
             ))}
+          </div>
+        )}
+
+        {isSupabaseConfigured && voiceStats.length > 0 && (
+          <div className="pt-4 border-t border-slate-100 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-display font-bold text-slate-900">
+              <Mic className="w-3.5 h-3.5 text-pink-700 shrink-0" />
+              <span>Pesquisas por Voz transformadas em Dados Relacionais (Zero-PII · Sem acentos)</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {voiceStats.map((v) => (
+                <div
+                  key={v.voice_fact_sk}
+                  className="bg-purple-50/50 rounded-xl border border-purple-200/80 p-3.5 flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0 space-y-1">
+                    <div className="text-xs font-bold text-purple-950 truncate">
+                      {v.intent_label_normalized}
+                    </div>
+                    <div className="text-[11px] font-mono text-slate-700 truncate">
+                      "{v.utterance_normalized}"
+                    </div>
+                    <div className="text-[10px] text-slate-500 flex items-center gap-1 truncate">
+                      <span>{v.city_normalized} - {v.state_code}</span>
+                      <span className="text-slate-300" aria-hidden="true">·</span>
+                      <span>{v.word_count} palavras</span>
+                      <span className="text-slate-300" aria-hidden="true">·</span>
+                      <span>{v.search_date}</span>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-lg bg-pink-100 text-pink-950 text-xs font-bold tabular-nums shrink-0">
+                    {v.search_count}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

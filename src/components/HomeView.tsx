@@ -3,7 +3,7 @@ import { AppSection, CepInfo } from '../types';
 import { useCatalog } from '../context/CatalogContext';
 import { CepVoiceSearchBar, SearchResolvedPayload } from './CepVoiceSearchBar';
 import { SupportTriageAgent } from './SupportTriageAgent';
-import { recordAnonymousSearchDemand } from '../utils/demandAnalytics';
+import { recordAnonymousSearchDemand, recordVoiceSearchRelational } from '../utils/demandAnalytics';
 import { formatLocationDisplay } from '../utils/cepProximity';
 import heroWomanRefugeImg from '../assets/images/hero_woman_refuge_1794861297510.jpg';
 import {
@@ -50,20 +50,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const handleHeroSearchResult = (payload: SearchResolvedPayload) => {
     setAgentOpen(true);
     const resolvedLocation = payload.cepInfo ?? currentLocation;
+    const topicSection = payload.suggestedSection ?? 'geral';
+
     if (payload.suggestedSection) {
       setSelectedNeed(payload.suggestedSection);
       setLastUserNeedText(payload.rawQuery);
-      void recordAnonymousSearchDemand(
-        payload.suggestedSection,
-        resolvedLocation,
-        payload.sourceChannel
-      );
     } else {
       setSelectedNeed(null);
       setLastUserNeedText(null);
-      if (resolvedLocation) {
-        void recordAnonymousSearchDemand('geral', resolvedLocation, payload.sourceChannel);
-      }
+    }
+
+    if (payload.sourceChannel === 'web_voice') {
+      void recordVoiceSearchRelational(payload.rawQuery, topicSection, resolvedLocation);
+    } else if (payload.suggestedSection || resolvedLocation) {
+      void recordAnonymousSearchDemand(topicSection, resolvedLocation, payload.sourceChannel);
     }
   };
 
@@ -286,7 +286,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   onUpdateNeed={(section, userText, channel = 'triage_agent') => {
                     setSelectedNeed(section);
                     setLastUserNeedText(userText ?? null);
-                    if (section) {
+                    if (channel === 'web_voice' && userText) {
+                      void recordVoiceSearchRelational(userText, section ?? 'geral', currentLocation);
+                    } else if (section) {
                       void recordAnonymousSearchDemand(section, currentLocation, channel);
                     }
                   }}

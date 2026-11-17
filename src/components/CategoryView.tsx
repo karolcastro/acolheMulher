@@ -11,7 +11,7 @@ import {
   sortServicesByCepProximity,
 } from '../utils/cepProximity';
 import { useNearbySusUnits } from '../hooks/useNearbySusUnits';
-import { recordAnonymousSearchDemand } from '../utils/demandAnalytics';
+import { recordAnonymousSearchDemand, recordVoiceSearchRelational } from '../utils/demandAnalytics';
 import { normalizeNgoNameKey } from '../lib/supabaseClient';
 import { MapPin, ArrowLeft, ExternalLink, Globe, Building2, RefreshCw } from 'lucide-react';
 
@@ -282,11 +282,19 @@ export const CategoryView: React.FC<CategoryViewProps> = ({
                   onUpdateLocation(payload.cepInfo);
                   setShowCepChange(false);
                 }
-                void recordAnonymousSearchDemand(
-                  payload.suggestedSection ?? category,
-                  resolvedLoc,
-                  payload.sourceChannel
-                );
+                if (payload.sourceChannel === 'web_voice') {
+                  void recordVoiceSearchRelational(
+                    payload.rawQuery,
+                    payload.suggestedSection ?? category,
+                    resolvedLoc
+                  );
+                } else {
+                  void recordAnonymousSearchDemand(
+                    payload.suggestedSection ?? category,
+                    resolvedLoc,
+                    payload.sourceChannel
+                  );
+                }
               }}
               onCancel={currentLocation ? () => setShowCepChange(false) : undefined}
             />

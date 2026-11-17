@@ -34,6 +34,20 @@ export interface DemandStatRow {
   search_count: number;
 }
 
+export interface VoiceSearchStatRow {
+  voice_fact_sk: number;
+  search_date: string;
+  intent_key: string;
+  intent_label_normalized: string;
+  category_key: string;
+  state_code: string;
+  city_normalized: string;
+  utterance_normalized: string;
+  had_cep_spoken: boolean;
+  word_count: number;
+  search_count: number;
+}
+
 const VALID_TOPIC_KEYS = new Set<DemandTopicKey>([
   'emergencia',
   'psicologico',
@@ -46,7 +60,30 @@ const VALID_TOPIC_KEYS = new Set<DemandTopicKey>([
 
 let lastRecordedSignature = '';
 let lastRecordedAt = 0;
+let lastVoiceSignature = '';
+let lastVoiceAt = 0;
 const syncedDiscoveredNgoKeys = new Set<string>();
+
+export function stripAccentsAscii(text: string): string {
+  return (text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function sanitizeVoiceTranscriptForDb(rawTranscript: string): string {
+  const noAccents = stripAccentsAscii(rawTranscript).toLowerCase();
+  const withoutNumbers = noAccents
+    .replace(/\b\d{2,}\b/g, ' ')
+    .replace(/[^a-z ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 140);
+
+  return withoutNumbers || 'busca por voz';
+}
 
 export function mapSectionToTopicKey(
   section?: AppSection | ServiceCategory | 'geral' | null
@@ -69,11 +106,10 @@ export function sanitizeRegionForAnalytics(location?: CepInfo | null): { state: 
     .toUpperCase()
     .slice(0, 2);
 
-  // Never send CEP digits or street details
-  const city = (location.localidade || '')
-    .replace(/\d+/g, '')
-    .trim()
-    .slice(0, 80);
+  // Never send CEP digits or street details; strip accents to avoid normalized key mismatches
+  const city = stripAccentsAscii(
+    (location.localidade || '').replace(/\d+/g, '').trim()
+  ).slice(0, 80);
 
   if (state.length !== 2) {
     return { state: 'BR', city: city || 'Nacional' };
@@ -104,7 +140,6 @@ export async function recordAnonymousSearchDemand(
   const signature = `${topicKey}|${state}|${city}|${channel}`;
   const now = Date.now();
 
-  // Guard only against accidental simultaneous double-fire within 800ms
   if (signature === lastRecordedSignature && now - lastRecordedAt < 800) {
     return;
   }
@@ -133,6 +168,50 @@ export async function recordAnonymousSearchDemand(
 }
 
 /**
+ * Converts a sanitized spoken query (Zero-PII, no CEP digits, no accents)
+ * into relational Star Schema entities: dim_voice_intents, dim_voice_keywords,
+ * fact_voice_searches, fact_voice_search_keywords, and fact_search_demand.
+ */
+export async function recordVoiceSearchRelational(
+  rawTranscript: string,
+  section?: AppSection | ServiceCategory | 'geral' | null,
+  location?: CepInfo | null
+): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    return;
+  }
+
+  const topicKey = mapSectionToTopicKey(section);
+  const { state, city } = sanitizeRegionForAnalytics(location);
+  const sanitizedUtterance = sanitizeVoiceTranscriptForDb(rawTranscript);
+  const signature = `${sanitizedUtterance}|${topicKey}|${state}|${city}`;
+  const now = Date.now();
+
+  if (signature === lastVoiceSignature && now - lastVoiceAt < 800) {
+    return;
+  }
+
+  lastVoiceSignature = signature;
+  lastVoiceAt = now;
+
+  try {
+    const res = await supabase.rpc('record_voice_search_relational', {
+      p_raw_utterance: sanitizedUtterance,
+      p_detected_topic: topicKey,
+      p_state: state,
+      p_city: city,
+    });
+
+    if (res.error) {
+      // Fallback gracefully if migration 006 has not been applied yet
+      await recordAnonymousSearchDemand(topicKey, location, 'web_voice');
+    }
+  } catch {
+    // Non-blocking
+  }
+}
+
+/**
  * Registers a newly discovered women-focused NGO into public.ngos without duplicates
  * when Supabase is connected (uses register_ngo_candidate RPC with osm_discovery source).
  */
@@ -141,7 +220,7 @@ export async function syncDiscoveredNgoToDatabase(item: ServiceItem): Promise<vo
     return;
   }
 
-  const dedupeKey = `${item.name.toLowerCase().trim()}|${item.state || ''}|${item.city || ''}`;
+  const dedupeKey = `${stripAccentsAscii(item.name).toLowerCase()}|${item.state || ''}|${stripAccentsAscii(item.city || '')}`;
   if (syncedDiscoveredNgoKeys.has(dedupeKey)) {
     return;
   }
@@ -156,8 +235,8 @@ export async function syncDiscoveredNgoToDatabase(item: ServiceItem): Promise<vo
       p_coverage: [item.city, item.state].filter(Boolean).join(' - ') || 'Brasil',
       p_state: item.state ?? null,
       p_city: item.city ?? null,
-      p_summary: item.description || 'Organização comunitária gratuita voltada ao acolhimento de mulheres.',
-      p_how_they_help: [item.freeConfirmation || 'Apoio gratuito voltado ao público feminino.'],
+      p_summary: item.description || 'Organizacao comunitaria gratuita voltada ao acolhimento de mulheres.',
+      p_how_they_help: [item.freeConfirmation || 'Apoio gratuito voltado ao publico feminino.'],
       p_access_channel: item.phone ? `Telefone/Atendimento: ${item.phone}` : 'Atendimento presencial local',
       p_website_url: item.website || '',
       p_privacy_note: item.address || 'Atendimento gratuito local.',
@@ -172,16 +251,17 @@ export async function syncDiscoveredNgoToDatabase(item: ServiceItem): Promise<vo
 
 export async function fetchRecentDemandStats(limit = 24): Promise<{
   rows: DemandStatRow[];
+  voiceRows: VoiceSearchStatRow[];
   totalSearches: number;
   isStarSchema: boolean;
   error: string | null;
 }> {
   if (!isSupabaseConfigured || !supabase) {
-    return { rows: [], totalSearches: 0, isStarSchema: false, error: null };
+    return { rows: [], voiceRows: [], totalSearches: 0, isStarSchema: false, error: null };
   }
 
   try {
-    const [starQuery, totalsQuery] = await Promise.all([
+    const [starQuery, totalsQuery, voiceQuery] = await Promise.all([
       supabase
         .from('vw_star_search_demand')
         .select(
@@ -194,6 +274,14 @@ export async function fetchRecentDemandStats(limit = 24): Promise<{
         .from('vw_star_demand_totals')
         .select('total_searches')
         .maybeSingle(),
+      supabase
+        .from('vw_star_voice_searches')
+        .select(
+          'voice_fact_sk, search_date, intent_key, intent_label_normalized, category_key, state_code, city_normalized, utterance_normalized, had_cep_spoken, word_count, search_count'
+        )
+        .order('search_date', { ascending: false })
+        .order('search_count', { ascending: false })
+        .limit(12),
     ]);
 
     if (!starQuery.error && Array.isArray(starQuery.data)) {
@@ -211,6 +299,11 @@ export async function fetchRecentDemandStats(limit = 24): Promise<{
         search_count: Number(row.search_count ?? 1),
       }));
 
+      const voiceRows: VoiceSearchStatRow[] =
+        !voiceQuery.error && Array.isArray(voiceQuery.data)
+          ? (voiceQuery.data as VoiceSearchStatRow[])
+          : [];
+
       const fallbackSum = mapped.reduce((acc, r) => acc + r.search_count, 0);
       const totalFromView =
         !totalsQuery.error && totalsQuery.data && typeof totalsQuery.data.total_searches === 'number'
@@ -219,6 +312,7 @@ export async function fetchRecentDemandStats(limit = 24): Promise<{
 
       return {
         rows: mapped,
+        voiceRows,
         totalSearches: totalFromView,
         isStarSchema: true,
         error: null,
@@ -235,9 +329,10 @@ export async function fetchRecentDemandStats(limit = 24): Promise<{
     if (legacyQuery.error) {
       return {
         rows: [],
+        voiceRows: [],
         totalSearches: 0,
         isStarSchema: false,
-        error: 'Execute os scripts SQL 004 e 005 no Supabase para habilitar o banco completo e o Star Schema.',
+        error: 'Execute os scripts SQL 004, 005 e 006 no Supabase para habilitar o banco completo e o Star Schema.',
       };
     }
 
@@ -246,6 +341,7 @@ export async function fetchRecentDemandStats(limit = 24): Promise<{
 
     return {
       rows: legacyRows,
+      voiceRows: [],
       totalSearches: legacySum,
       isStarSchema: false,
       error: null,
@@ -253,6 +349,7 @@ export async function fetchRecentDemandStats(limit = 24): Promise<{
   } catch {
     return {
       rows: [],
+      voiceRows: [],
       totalSearches: 0,
       isStarSchema: false,
       error: 'Não foi possível consultar as estatísticas agregadas agora.',
