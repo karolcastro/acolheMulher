@@ -19,6 +19,7 @@ Os arquivos estão em `supabase/migrations/` e devem ser lidos/executados em ord
 | 005 | `005_ngos_dedupe_and_complete_search_tracking.sql` | Regras de deduplicação de ONGs, RPC de cadastro e ampliação do rastreamento por canal |
 | 006 | `006_strict_3nf_star_schema_voice_rls.sql` | Normalização adicional e estrutura relacional para estatísticas de buscas por voz |
 | 007 | `007_strict_zero_accents_zero_special_chars_all_tables.sql` | Sanitização e restrições de texto/normalização em tabelas e funções |
+| 008 | `008_expand_women_courses_ngos_brasil.sql` | Expansão do catálogo de ONGs de cursos gratuitos (Online e Presencial no Brasil) em ASCII estrito |
 
 **Atenção:** o guia de implantação não deve orientar a executar apenas a migration 001 e presumir que todos os recursos mais recentes estarão disponíveis. A aplicação chama funções e views criadas em migrations posteriores. Em bancos já existentes, compare o histórico e o estado real antes de reaplicar scripts; faça backup e valide no ambiente de homologação.
 
@@ -233,7 +234,7 @@ Use somente a chave pública anon no cliente. Nunca coloque `service_role`, senh
 
 ## 8. Verificação recomendada após implantação
 
-1. Confirmar que as migrations 001–007 foram aplicadas sem erro e na ordem correta.
+1. Confirmar que as migrations 001–008 foram aplicadas sem erro e na ordem correta.
 2. Verificar a existência das tabelas, views e funções RPC mencionadas acima.
 3. Conferir RLS, FORCE RLS, grants e policies no banco real.
 4. Testar leitura do catálogo com a chave anon.

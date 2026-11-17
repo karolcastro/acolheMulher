@@ -27,32 +27,89 @@ function mapAreaToDemandTopic(area: NgoHelpArea): DemandTopicKey {
   }
 }
 
+type ModalityFilter = 'todas' | 'online' | 'presencial';
+
+function detectNgoModality(ngo: NgoItem): { isOnline: boolean; isPresencial: boolean } {
+  const haystack = normalizeText(`${ngo.coverage} ${ngo.accessChannel} ${ngo.summary}`);
+  const isOnline =
+    haystack.includes('online') ||
+    haystack.includes('todo o brasil') ||
+    haystack.includes('nacional') ||
+    haystack.includes('ead') ||
+    haystack.includes('whatsapp') ||
+    haystack.includes('aplicativo');
+  const isPresencial =
+    Boolean(ngo.state) ||
+    haystack.includes('presencial') ||
+    haystack.includes('sede') ||
+    haystack.includes('nucleo') ||
+    haystack.includes('capitulo') ||
+    haystack.includes('centro') ||
+    haystack.includes('oficina');
+  return { isOnline, isPresencial };
+}
+
 export const NgosView: React.FC<NgosViewProps> = ({ currentLocation = null, onBackToHome }) => {
   const { ngos } = useCatalog();
   const [selectedArea, setSelectedArea] = useState<NgoHelpArea>('todas');
+  const [selectedModality, setSelectedModality] = useState<ModalityFilter>('todas');
+  const [selectedState, setSelectedState] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState('');
+
+  const availableStates = useMemo(() => {
+    const ufs = new Set<string>();
+    for (const ngo of ngos) {
+      if (ngo.state && /^[A-Z]{2}$/.test(ngo.state)) {
+        ufs.add(ngo.state);
+      }
+    }
+    return Array.from(ufs).sort();
+  }, [ngos]);
 
   const areaTabs: { id: NgoHelpArea; label: string }[] = [
     { id: 'todas', label: 'Todas' },
+    { id: 'cursos_renda', label: 'Cursos & Renda' },
     { id: 'saude_parto', label: 'Saúde, Parto & Exames' },
     { id: 'psicologico_juridico', label: 'Psicologia & Jurídico' },
     { id: 'acolhimento_protecao', label: 'Acolhimento & Proteção' },
-    { id: 'cursos_renda', label: 'Cursos & Renda' },
   ];
 
   const filteredNgos = useMemo(() => {
     const byArea =
       selectedArea === 'todas' ? ngos : ngos.filter((ngo) => ngo.area === selectedArea);
 
-    const q = normalizeText(searchTerm);
-    if (!q) return byArea;
+    const byModality =
+      selectedModality === 'todas'
+        ? byArea
+        : byArea.filter((ngo) => {
+            const { isOnline, isPresencial } = detectNgoModality(ngo);
+            return selectedModality === 'online' ? isOnline : isPresencial;
+          });
 
-    return byArea.filter((ngo) =>
+    const byState =
+      selectedState === 'todos'
+        ? byModality
+        : selectedState === 'NACIONAL'
+          ? byModality.filter((ngo) => !ngo.state || normalizeText(ngo.coverage).includes('todo o brasil') || normalizeText(ngo.coverage).includes('nacional'))
+          : byModality.filter((ngo) => {
+              if (ngo.state === selectedState) return true;
+              const covNorm = normalizeText(ngo.coverage);
+              return (
+                covNorm.includes(` ${selectedState.toLowerCase()} `) ||
+                covNorm.endsWith(` ${selectedState.toLowerCase()}`) ||
+                covNorm.includes(`${selectedState.toLowerCase()},`)
+              );
+            });
+
+    const q = normalizeText(searchTerm);
+    if (!q) return byState;
+
+    return byState.filter((ngo) =>
       normalizeText(
         `${ngo.name} ${ngo.organization} ${ngo.coverage} ${ngo.state || ''} ${ngo.city || ''} ${ngo.areaLabel} ${ngo.summary} ${ngo.howTheyHelp.join(' ')}`
       ).includes(q)
     );
-  }, [selectedArea, searchTerm, ngos]);
+  }, [selectedArea, selectedModality, selectedState, searchTerm, ngos]);
 
   const handleSelectArea = (area: NgoHelpArea) => {
     setSelectedArea(area);
@@ -89,31 +146,61 @@ export const NgosView: React.FC<NgosViewProps> = ({ currentLocation = null, onBa
             ONGs que podem te ajudar gratuitamente ({ngos.length})
           </h1>
           <p className="text-sm sm:text-base text-slate-600 max-w-3xl leading-relaxed">
-            Projetos solidários feitos por mulheres e voluntárias para oferecer escuta, orientação jurídica, exames e cursos sem custo.
+            Projetos solidários feitos por mulheres e voluntárias para oferecer cursos gratuitos de tecnologia e geração de renda, escuta, orientação jurídica e exames sem custo, online e presenciais pelo Brasil.
           </p>
         </div>
 
-        {/* Search Input inside NGOs Directory */}
-        <form
-          onSubmit={handleNgoSearchSubmit}
-          className="flex items-center bg-white rounded-xl border border-slate-200 p-1.5 max-w-xl shadow-xs focus-within:ring-2 focus-within:ring-purple-600 focus-within:border-purple-600 gap-2"
-        >
-          <Search className="w-4 h-4 text-purple-700 ml-2.5 shrink-0" />
-          <input
-            type="search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Filtrar ONG por nome, estado (SP, BA...), cidade ou apoio"
-            aria-label="Filtrar ONGs gratuitas"
-            className="flex-1 bg-transparent text-xs sm:text-sm text-slate-900 placeholder-slate-500 focus:outline-none min-w-0 py-1.5"
-          />
-          <button
-            type="submit"
-            className="min-h-[36px] px-3.5 py-1.5 rounded-lg bg-purple-900 hover:bg-purple-950 text-white text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+        {/* Search Input + Modality & State Filters */}
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+          <form
+            onSubmit={handleNgoSearchSubmit}
+            className="flex-1 flex items-center bg-white rounded-xl border border-slate-200 p-1.5 max-w-xl shadow-xs focus-within:ring-2 focus-within:ring-purple-600 focus-within:border-purple-600 gap-2"
           >
-            Buscar ONG
-          </button>
-        </form>
+            <Search className="w-4 h-4 text-purple-700 ml-2.5 shrink-0" />
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Filtrar ONG por nome, curso, estado (SP, PR, BA...) ou cidade"
+              aria-label="Filtrar ONGs gratuitas"
+              className="flex-1 bg-transparent text-xs sm:text-sm text-slate-900 placeholder-slate-500 focus:outline-none min-w-0 py-1.5"
+            />
+            <button
+              type="submit"
+              className="min-h-[36px] px-3.5 py-1.5 rounded-lg bg-purple-900 hover:bg-purple-950 text-white text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+            >
+              Buscar ONG
+            </button>
+          </form>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Filtrar por modalidade"
+              value={selectedModality}
+              onChange={(e) => setSelectedModality(e.target.value as ModalityFilter)}
+              className="min-h-[42px] px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-600"
+            >
+              <option value="todas">Modalidade: Online e Presencial</option>
+              <option value="online">Somente Online / Nacional</option>
+              <option value="presencial">Com Atendimento Presencial</option>
+            </select>
+
+            <select
+              aria-label="Filtrar por estado ou abrangência"
+              value={selectedState}
+              onChange={(e) => setSelectedState(e.target.value)}
+              className="min-h-[42px] px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-600"
+            >
+              <option value="todos">Localidade: Todo o Brasil</option>
+              <option value="NACIONAL">Abrangência Nacional (Online)</option>
+              {availableStates.map((uf) => (
+                <option key={uf} value={uf}>
+                  Estado: {uf}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         {/* Clean Filter Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">

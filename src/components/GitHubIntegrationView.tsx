@@ -343,12 +343,12 @@ export const GitHubIntegrationView: React.FC = () => {
               Pronto para conectar ao seu Supabase ou exportar em MySQL 8.0+
             </p>
             <p>
-              No Supabase, execute os scripts <code className="font-mono text-purple-900">004</code>, <code className="font-mono text-purple-900">005</code>, <code className="font-mono text-purple-900">006</code> e <code className="font-mono text-purple-900">007_strict_zero_accents_zero_special_chars_all_tables.sql</code> e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel. Para MySQL 8.0+ (<code className="font-mono">utf8mb4</code>), baixe o schema completo acima.
+              No Supabase, execute os scripts <code className="font-mono text-purple-900">004</code>, <code className="font-mono text-purple-900">005</code>, <code className="font-mono text-purple-900">006</code>, <code className="font-mono text-purple-900">007</code> e <code className="font-mono text-purple-900">008_expand_women_courses_ngos_brasil.sql</code> e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel. Para MySQL 8.0+ (<code className="font-mono">utf8mb4</code>), baixe o schema completo acima.
             </p>
           </div>
         ) : demandError ? (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-950">
-            {demandError} Execute os scripts <code className="font-mono">004</code>, <code className="font-mono">005</code>, <code className="font-mono">006</code> e <code className="font-mono">007_strict_zero_accents_zero_special_chars_all_tables.sql</code> no SQL Editor do Supabase.
+            {demandError} Execute os scripts <code className="font-mono">004</code>, <code className="font-mono">005</code>, <code className="font-mono">006</code>, <code className="font-mono">007</code> e <code className="font-mono">008_expand_women_courses_ngos_brasil.sql</code> no SQL Editor do Supabase.
           </div>
         ) : demandStats.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600">

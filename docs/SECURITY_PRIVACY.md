@@ -18,6 +18,10 @@ Antes do registro analítico, a transcrição é normalizada e os dígitos são 
 
 A transcrição por Gemini recebe áudio em Base64 no endpoint de servidor e encaminha esse conteúdo à API Gemini. O código inspecionado não grava o áudio em tabela própria. O tratamento e a retenção do lado do provedor seguem os termos e configurações do provedor, não sendo controlados pelo banco do projeto.
 
+### Triagem assistida por IA (`POST /api/triage-ai`)
+
+Quando a usuária envia uma mensagem livre no componente `SupportTriageAgent`, o frontend envia até 400 caracteres do relato, cidade/UF opcionais (sem CEP completo) e até 24 itens resumidos do catálogo para `POST /api/triage-ai`. O servidor valida os IDs retornados pelo modelo para evitar recomendações inventadas e não persiste o relato em tabela do banco. O tratamento do lado do provedor segue os termos da API Gemini; sem conexão ou sem chave configurada, o componente usa triagem determinística local.
+
 ### Catálogo e organizações
 
 O banco armazena informações de serviços e organizações parceiras, como nome da instituição, categoria, localização, canais de contato, descrição, situação e dados de verificação. Esses dados não são dados cadastrais da usuária final.
@@ -46,7 +50,7 @@ O modo camuflagem altera o conteúdo exibido na interface; não elimina vestígi
 
 ## 5. Funcionamento offline
 
-O service worker utiliza Workbox para precache de arquivos do build e cache de fontes. O modal offline disponibiliza instruções e números essenciais. As consultas a ViaCEP, CNES, Gemini e Supabase precisam de conexão; não há garantia de que o catálogo dinâmico ou todas as informações locais estejam disponíveis sem internet.
+O service worker utiliza Workbox para precache de arquivos do build e cache de fontes. O modal offline disponibiliza instruções e números essenciais. As consultas a ViaCEP, CNES, Gemini (transcrição e triagem `/api/triage-ai`) e Supabase precisam de conexão; não há garantia de que o catálogo dinâmico ou todas as informações locais estejam disponíveis sem internet. Na triagem, o componente alterna para regras determinísticas locais quando offline.
 
 ## 6. Recomendações operacionais
 

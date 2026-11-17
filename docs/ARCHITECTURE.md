@@ -7,7 +7,7 @@ Este documento descreve a arquitetura observada no código do repositório. Ele 
 O repositório contém três blocos de execução:
 
 1. **Frontend React/Vite:** aplicação de navegação e consulta de serviços.
-2. **Endpoints TypeScript:** funções HTTP em `api/` para CNES e transcrição, além de `server.ts` para execução Express própria e desenvolvimento local.
+2. **Endpoints TypeScript:** funções HTTP em `api/` para CNES, transcrição e triagem por IA, além de `server.ts` para execução Express própria e desenvolvimento local.
 3. **Backend Python independente:** API REST e servidor MCP, com arquitetura em camadas e integração opcional ao Supabase.
 
 O frontend não inicializa automaticamente o backend Python. A implantação do backend Python exige um serviço de execução próprio e configuração de CORS.
@@ -24,7 +24,7 @@ O frontend não inicializa automaticamente o backend Python. A implantação do 
 ### Organização
 
 - `src/App.tsx`: composição da aplicação, navegação entre seções, estado de localização, saída rápida e abertura das orientações offline.
-- `src/components/`: telas e componentes, incluindo busca, cartões de serviço, área de ONGs, triagem, camuflagem, integração e gerador de widget.
+- `src/components/`: telas e componentes, incluindo busca, cartões de serviço, área de ONGs, triagem com IA+RAG e fallback local (`SupportTriageAgent.tsx`), camuflagem, integração e gerador de widget.
 - `src/context/CatalogContext.tsx`: estado e carregamento do catálogo local/remoto, sincronização Realtime quando disponível e submissão de organizações.
 - `src/data/`: catálogo estático de serviços, ONGs e dados auxiliares.
 - `src/hooks/`: estado de conectividade, instalação PWA, unidades SUS próximas e reconhecimento de voz.
@@ -45,6 +45,7 @@ O cliente considera serviços públicos elegíveis quando estão ativos, verific
 |---|---|---|---|
 | GET | `/api/cnes-public` | `api/cnes-public.ts` | Consulta unidades públicas elegíveis na API CNES; aceita código IBGE ou cidade/UF e, opcionalmente, coordenadas para ordenar/limitar por distância |
 | POST | `/api/transcribe` | `api/transcribe.ts` | Recebe áudio Base64, valida tipo/tamanho, encaminha para Gemini e devolve transcrição |
+| POST | `/api/triage-ai` | `api/triage-ai.ts` | Classifica necessidade/urgência, resume passos práticos de segurança e recomenda até 4 IDs do contexto de catálogo (`services` e `ngos`) enviado via Gemini (`gemini-4-hydrogen`) em JSON estruturado |
 
 Essas rotas dependem da plataforma que interpreta a pasta `api/` como funções serverless e das variáveis de ambiente correspondentes.
 
@@ -57,6 +58,7 @@ O script `npm run dev` executa `tsx server.ts`. O Express expõe:
 | GET | `/api/health` | Health check |
 | GET | `/api/cnes-public` | Encaminha para o handler CNES |
 | POST | `/api/transcribe` | Transcrição Gemini |
+| POST | `/api/triage-ai` | Encaminha para o handler de triagem IA + RAG (`api/triage-ai.ts`) |
 
 Em modo não produção, o servidor usa o middleware do Vite. Em modo produção, serve arquivos estáticos de `dist/` e faz fallback de navegação para `index.html`. A configuração Vercel atual executa o build Vite; ela não inicia esse Express como processo persistente.
 
@@ -99,7 +101,7 @@ As tools são registradas em `backend/mcp/tools.py`; resources em `backend/mcp/r
 | ViaCEP | Frontend e backend Python | Consulta de endereço a partir de CEP |
 | IBGE | `api/cnes-public.ts` | Resolve código municipal a partir de cidade/UF |
 | CNES / Ministério da Saúde | `api/cnes-public.ts` | Consulta estabelecimentos e filtra registros elegíveis |
-| Gemini | `api/transcribe.ts` e `server.ts` | Transcrição de áudio; exige chave de servidor |
+| Gemini | `api/transcribe.ts`, `api/triage-ai.ts` e `server.ts` | Transcrição de áudio (`gemini-3.5-transcribe`) e triagem estruturada com RAG sobre o catálogo (`gemini-4-hydrogen`); exige chave de servidor |
 | Supabase | Frontend e backend Python | Catálogo, organizações e analytics; exige URL/chave e schema compatível |
 | Web Speech API | Hook de voz do frontend | Depende de suporte e comportamento do navegador |
 
