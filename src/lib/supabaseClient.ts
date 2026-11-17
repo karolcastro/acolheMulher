@@ -97,6 +97,20 @@ const VALID_ACCESS_MODES = new Set<ServiceItem['accessMode']>([
   'Plantão 24h',
 ]);
 
+function mapAccessMode(raw?: string | null): ServiceItem['accessMode'] {
+  if (raw && VALID_ACCESS_MODES.has(raw as ServiceItem['accessMode'])) {
+    return raw as ServiceItem['accessMode'];
+  }
+  const norm = (raw || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (norm.includes('24h') || norm.includes('plantao')) return 'Plantão 24h';
+  if (norm.includes('online')) return 'Online Imediato';
+  if (norm.includes('agendamento')) return 'Agendamento Prévio';
+  return 'Livre Demanda (Porta Aberta)';
+}
+
 const VALID_NGO_AREAS = new Set<Exclude<NgoHelpArea, 'todas'>>([
   'psicologico_juridico',
   'acolhimento_protecao',
@@ -130,11 +144,7 @@ export function mapRowToServiceItem(row: SupabaseServiceRow): ServiceItem {
     ? (row.category as ServiceCategory)
     : 'social';
 
-  const accessMode: ServiceItem['accessMode'] = VALID_ACCESS_MODES.has(
-    row.access_mode as ServiceItem['accessMode']
-  )
-    ? (row.access_mode as ServiceItem['accessMode'])
-    : 'Livre Demanda (Porta Aberta)';
+  const accessMode = mapAccessMode(row.access_mode);
 
   return {
     id: row.id,

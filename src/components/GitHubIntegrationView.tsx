@@ -343,12 +343,12 @@ export const GitHubIntegrationView: React.FC = () => {
               Pronto para conectar ao seu Supabase ou exportar em MySQL 8.0+
             </p>
             <p>
-              No Supabase, execute os scripts <code className="font-mono text-purple-900">004_normalized_star_schema_rls.sql</code>, <code className="font-mono text-purple-900">005_ngos_dedupe_and_complete_search_tracking.sql</code> e <code className="font-mono text-purple-900">006_strict_3nf_star_schema_voice_rls.sql</code> e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel. Para MySQL 8.0+ (<code className="font-mono">utf8mb4</code>), baixe o schema completo acima.
+              No Supabase, execute os scripts <code className="font-mono text-purple-900">004</code>, <code className="font-mono text-purple-900">005</code>, <code className="font-mono text-purple-900">006</code> e <code className="font-mono text-purple-900">007_strict_zero_accents_zero_special_chars_all_tables.sql</code> e configure <code className="font-mono text-purple-900">VITE_SUPABASE_URL</code> e <code className="font-mono text-purple-900">VITE_SUPABASE_ANON_KEY</code> na Vercel. Para MySQL 8.0+ (<code className="font-mono">utf8mb4</code>), baixe o schema completo acima.
             </p>
           </div>
         ) : demandError ? (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-950">
-            {demandError} Execute os scripts <code className="font-mono">004</code>, <code className="font-mono">005</code> e <code className="font-mono">006_strict_3nf_star_schema_voice_rls.sql</code> no SQL Editor do Supabase.
+            {demandError} Execute os scripts <code className="font-mono">004</code>, <code className="font-mono">005</code>, <code className="font-mono">006</code> e <code className="font-mono">007_strict_zero_accents_zero_special_chars_all_tables.sql</code> no SQL Editor do Supabase.
           </div>
         ) : demandStats.length === 0 ? (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600">

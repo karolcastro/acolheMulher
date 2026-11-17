@@ -14,6 +14,7 @@ import {
   type SupabaseNgoRow,
   type SupabaseServiceRow,
 } from '../lib/supabaseClient';
+import { sanitizeStrictAsciiText } from '../utils/demandAnalytics';
 
 export interface RegisterNgoInput {
   name: string;
@@ -404,19 +405,24 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       try {
+        const dbHelpItems = localNgo.howTheyHelp
+          .map((item) => sanitizeStrictAsciiText(item))
+          .filter((item) => item.length > 0);
         const { data, error } = await supabase.rpc('register_ngo_candidate', {
-          p_name: name,
-          p_organization: organization,
+          p_name: sanitizeStrictAsciiText(name),
+          p_organization: sanitizeStrictAsciiText(organization),
           p_area: input.area,
-          p_area_label: localNgo.areaLabel,
-          p_coverage: coverage,
+          p_area_label: sanitizeStrictAsciiText(localNgo.areaLabel) || 'Apoio Gratuito para Mulheres',
+          p_coverage: sanitizeStrictAsciiText(coverage) || 'Todo o Brasil',
           p_state: state ?? null,
-          p_city: city ?? null,
-          p_summary: summary,
-          p_how_they_help: localNgo.howTheyHelp,
-          p_access_channel: accessChannel,
+          p_city: city ? sanitizeStrictAsciiText(city.replace(/\d+/g, ' ')) || null : null,
+          p_summary: sanitizeStrictAsciiText(summary),
+          p_how_they_help: dbHelpItems.length > 0 ? dbHelpItems : [sanitizeStrictAsciiText(summary)],
+          p_access_channel:
+            sanitizeStrictAsciiText(accessChannel) || 'Atendimento gratuito pelo site oficial',
           p_website_url: websiteUrl,
-          p_privacy_note: privacyNote,
+          p_privacy_note:
+            sanitizeStrictAsciiText(privacyNote) || 'Atendimento gratuito e sigiloso voltado para mulheres',
           p_related_categories: localNgo.relatedCategories,
           p_is_free_confirmed: input.isFreeConfirmed,
           p_source_type: 'partner_form',
@@ -426,7 +432,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return {
             status: 'error',
             message:
-              'Não foi possível salvar no Supabase agora. Verifique se o script SQL 005 foi executado no SQL Editor.',
+              'Não foi possível salvar no Supabase agora. Verifique se os scripts SQL 005, 006 e 007 foram executados no SQL Editor.',
           };
         }
 

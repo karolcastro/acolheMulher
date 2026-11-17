@@ -73,6 +73,15 @@ export function stripAccentsAscii(text: string): string {
     .trim();
 }
 
+export function sanitizeStrictAsciiText(text: string): string {
+  return (text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function sanitizeVoiceTranscriptForDb(rawTranscript: string): string {
   const noAccents = stripAccentsAscii(rawTranscript).toLowerCase();
   const withoutNumbers = noAccents
@@ -106,9 +115,9 @@ export function sanitizeRegionForAnalytics(location?: CepInfo | null): { state: 
     .toUpperCase()
     .slice(0, 2);
 
-  // Never send CEP digits or street details; strip accents to avoid normalized key mismatches
-  const city = stripAccentsAscii(
-    (location.localidade || '').replace(/\d+/g, '').trim()
+  // Never send CEP digits, street details, accents, or special characters
+  const city = sanitizeStrictAsciiText(
+    (location.localidade || '').replace(/\d+/g, ' ')
   ).slice(0, 80);
 
   if (state.length !== 2) {
@@ -220,26 +229,34 @@ export async function syncDiscoveredNgoToDatabase(item: ServiceItem): Promise<vo
     return;
   }
 
-  const dedupeKey = `${stripAccentsAscii(item.name).toLowerCase()}|${item.state || ''}|${stripAccentsAscii(item.city || '')}`;
-  if (syncedDiscoveredNgoKeys.has(dedupeKey)) {
+  const cleanName = sanitizeStrictAsciiText(item.name);
+  const cleanCity = item.city ? sanitizeStrictAsciiText(item.city.replace(/\d+/g, ' ')) : '';
+  const dedupeKey = `${cleanName.toLowerCase()}|${item.state || ''}|${cleanCity.toLowerCase()}`;
+  if (!cleanName || syncedDiscoveredNgoKeys.has(dedupeKey)) {
     return;
   }
   syncedDiscoveredNgoKeys.add(dedupeKey);
 
   try {
     await supabase.rpc('register_ngo_candidate', {
-      p_name: item.name,
-      p_organization: item.name,
+      p_name: cleanName,
+      p_organization: cleanName,
       p_area: 'acolhimento_protecao',
-      p_area_label: item.subcategory || 'ONG Voltada para Mulheres',
-      p_coverage: [item.city, item.state].filter(Boolean).join(' - ') || 'Brasil',
+      p_area_label: sanitizeStrictAsciiText(item.subcategory || 'ONG Voltada para Mulheres') || 'ONG Voltada para Mulheres',
+      p_coverage: sanitizeStrictAsciiText([cleanCity, item.state].filter(Boolean).join(' ')) || 'Brasil',
       p_state: item.state ?? null,
-      p_city: item.city ?? null,
-      p_summary: item.description || 'Organizacao comunitaria gratuita voltada ao acolhimento de mulheres.',
-      p_how_they_help: [item.freeConfirmation || 'Apoio gratuito voltado ao publico feminino.'],
-      p_access_channel: item.phone ? `Telefone/Atendimento: ${item.phone}` : 'Atendimento presencial local',
+      p_city: cleanCity || null,
+      p_summary:
+        sanitizeStrictAsciiText(item.description || '') ||
+        'Organizacao comunitaria gratuita voltada ao acolhimento de mulheres',
+      p_how_they_help: [
+        sanitizeStrictAsciiText(item.freeConfirmation || '') || 'Apoio gratuito voltado ao publico feminino',
+      ],
+      p_access_channel: item.phone
+        ? sanitizeStrictAsciiText(`Telefone Atendimento ${item.phone}`)
+        : 'Atendimento presencial local',
       p_website_url: item.website || '',
-      p_privacy_note: item.address || 'Atendimento gratuito local.',
+      p_privacy_note: sanitizeStrictAsciiText(item.address || '') || 'Atendimento gratuito local',
       p_related_categories: ['psicologico', 'juridico', 'emergencia'],
       p_is_free_confirmed: true,
       p_source_type: 'osm_discovery',
@@ -332,7 +349,7 @@ export async function fetchRecentDemandStats(limit = 24): Promise<{
         voiceRows: [],
         totalSearches: 0,
         isStarSchema: false,
-        error: 'Execute os scripts SQL 004, 005 e 006 no Supabase para habilitar o banco completo e o Star Schema.',
+        error: 'Execute os scripts SQL 004, 005, 006 e 007 no Supabase para habilitar o banco sem acentos e o Star Schema.',
       };
     }
 

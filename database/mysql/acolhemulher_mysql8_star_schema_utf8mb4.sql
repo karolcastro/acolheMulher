@@ -1,23 +1,25 @@
 -- ============================================================================
 -- AcolheMulher — Banco Completo em MySQL 8.0+ (UTF-8 utf8mb4)
--- Arquitetura: Normalização Estrita 1FN/2FN/3FN + Star Schema + Voz Relacional
--- Segurança: Isolamento por Linha (Views DEFINER + Triggers + Procedures + Roles)
+-- Arquitetura: Normalizacao Estrita 1FN/2FN/3FN + Star Schema + Voz Relacional
+-- Regra Absoluta: ZERO acentos e ZERO caracteres especiais em todo o banco
+-- Seguranca: Isolamento por Linha (Views DEFINER + Triggers + Procedures + Roles)
 -- ============================================================================
 -- Regras aplicadas neste script:
 -- 1. UTF-8 integral (utf8mb4 / utf8mb4_unicode_ci) em banco, tabelas e colunas.
--- 2. ZERO acentos em todas as chaves, slugs e colunas normalizadas (*_normalized).
+-- 2. ZERO acentos E ZERO caracteres especiais em todas as tabelas e colunas
+--    descritivas/chaves (somente A-Z, a-z, 0-9 e espaco; URLs ASCII validas em website).
 -- 3. 100% Normalizado (zero arrays/JSON denormalizados — listas viram tabelas 1FN/N:N).
 -- 4. Star Schema completo:
 --    - Fatos: fact_search_demand, fact_voice_searches, fact_voice_search_keywords
---    - Dimensões: dim_dates, dim_categories, dim_subcategories, dim_regions,
+--    - Dimensoes: dim_dates, dim_categories, dim_subcategories, dim_regions,
 --                 dim_access_channels, dim_access_modes, dim_organizations,
 --                 dim_ngo_areas, dim_voice_intents, dim_voice_keywords, dim_tags
--- 5. Voz -> Relacional: sp_record_voice_search_relational limpa dígitos de CEP,
---    remove acentos, extrai intenção e palavras-chave e grava nas dimensões.
--- 6. Segurança equivalente ao RLS do PostgreSQL para MySQL 8.0+:
---    - Views SQL SECURITY DEFINER para leitura pública (somente ativos/verificados)
---    - Views + Triggers de propriedade por @current_partner_uid
---    - Procedures SQL SECURITY DEFINER como única porta de escrita anônima
+-- 5. Voz -> Relacional: sp_record_voice_search_relational limpa digitos de CEP,
+--    remove acentos e simbolos, extrai intencao e palavras-chave nas dimensoes.
+-- 6. Seguranca equivalente ao RLS do PostgreSQL para MySQL 8.0+:
+--    - Constraints CHECK ASCII estritas em TODAS as tabelas
+--    - Triggers BEFORE INSERT/UPDATE sanitizando automaticamente qualquer entrada
+--    - Views SQL SECURITY DEFINER para leitura publica + Procedures DEFINER
 -- ============================================================================
 
 CREATE DATABASE IF NOT EXISTS acolhemulher
@@ -30,10 +32,13 @@ SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 SET sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
 
 -- ----------------------------------------------------------------------------
--- 0. Funções Utilitárias UTF-8 (Remoção de Acentos para Chaves ASCII Puras)
+-- 0. Funcoes Utilitarias UTF-8 Estritas (Zero Acentos e Zero Especiais)
 -- ----------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS fn_strip_accents_utf8mb4;
+DROP FUNCTION IF EXISTS fn_sanitize_ascii_text;
 DROP FUNCTION IF EXISTS fn_normalize_key_ascii;
+DROP FUNCTION IF EXISTS fn_sanitize_digits_space;
+DROP FUNCTION IF EXISTS fn_sanitize_ascii_url;
 DROP FUNCTION IF EXISTS fn_normalize_ngo_domain;
 
 DELIMITER $$
@@ -44,17 +49,38 @@ DETERMINISTIC
 NO SQL
 BEGIN
   DECLARE v TEXT;
-  SET v = LOWER(TRIM(COALESCE(p_text, '')));
+  SET v = TRIM(COALESCE(p_text, ''));
 
-  -- Minúsculas acentuadas e cedilha -> ASCII puro sem acento
-  SET v = REPLACE(v, 'á', 'a'); SET v = REPLACE(v, 'à', 'a'); SET v = REPLACE(v, 'â', 'a'); SET v = REPLACE(v, 'ã', 'a'); SET v = REPLACE(v, 'ä', 'a');
+  -- Maiusculas acentuadas -> ASCII puro
+  SET v = REPLACE(v, 'Á', 'A'); SET v = REPLACE(v, 'À', 'A'); SET v = REPLACE(v, 'Â', 'A'); SET v = REPLACE(v, 'Ã', 'A'); SET v = REPLACE(v, 'Ä', 'A'); SET v = REPLACE(v, 'Å', 'A');
+  SET v = REPLACE(v, 'É', 'E'); SET v = REPLACE(v, 'È', 'E'); SET v = REPLACE(v, 'Ê', 'E'); SET v = REPLACE(v, 'Ë', 'E');
+  SET v = REPLACE(v, 'Í', 'I'); SET v = REPLACE(v, 'Ì', 'I'); SET v = REPLACE(v, 'Î', 'I'); SET v = REPLACE(v, 'Ï', 'I');
+  SET v = REPLACE(v, 'Ó', 'O'); SET v = REPLACE(v, 'Ò', 'O'); SET v = REPLACE(v, 'Ô', 'O'); SET v = REPLACE(v, 'Õ', 'O'); SET v = REPLACE(v, 'Ö', 'O'); SET v = REPLACE(v, 'Ø', 'O');
+  SET v = REPLACE(v, 'Ú', 'U'); SET v = REPLACE(v, 'Ù', 'U'); SET v = REPLACE(v, 'Û', 'U'); SET v = REPLACE(v, 'Ü', 'U');
+  SET v = REPLACE(v, 'Ç', 'C'); SET v = REPLACE(v, 'Ñ', 'N'); SET v = REPLACE(v, 'Ý', 'Y');
+
+  -- Minusculas acentuadas -> ASCII puro
+  SET v = REPLACE(v, 'á', 'a'); SET v = REPLACE(v, 'à', 'a'); SET v = REPLACE(v, 'â', 'a'); SET v = REPLACE(v, 'ã', 'a'); SET v = REPLACE(v, 'ä', 'a'); SET v = REPLACE(v, 'å', 'a');
   SET v = REPLACE(v, 'é', 'e'); SET v = REPLACE(v, 'è', 'e'); SET v = REPLACE(v, 'ê', 'e'); SET v = REPLACE(v, 'ë', 'e');
   SET v = REPLACE(v, 'í', 'i'); SET v = REPLACE(v, 'ì', 'i'); SET v = REPLACE(v, 'î', 'i'); SET v = REPLACE(v, 'ï', 'i');
-  SET v = REPLACE(v, 'ó', 'o'); SET v = REPLACE(v, 'ò', 'o'); SET v = REPLACE(v, 'ô', 'o'); SET v = REPLACE(v, 'õ', 'o'); SET v = REPLACE(v, 'ö', 'o');
+  SET v = REPLACE(v, 'ó', 'o'); SET v = REPLACE(v, 'ò', 'o'); SET v = REPLACE(v, 'ô', 'o'); SET v = REPLACE(v, 'õ', 'o'); SET v = REPLACE(v, 'ö', 'o'); SET v = REPLACE(v, 'ø', 'o');
   SET v = REPLACE(v, 'ú', 'u'); SET v = REPLACE(v, 'ù', 'u'); SET v = REPLACE(v, 'û', 'u'); SET v = REPLACE(v, 'ü', 'u');
   SET v = REPLACE(v, 'ç', 'c'); SET v = REPLACE(v, 'ñ', 'n');
   SET v = REPLACE(v, 'ý', 'y'); SET v = REPLACE(v, 'ÿ', 'y');
+  SET v = REPLACE(v, 'ª', 'a'); SET v = REPLACE(v, 'º', 'o');
 
+  RETURN v;
+END$$
+
+CREATE FUNCTION fn_sanitize_ascii_text(p_text TEXT)
+RETURNS TEXT
+DETERMINISTIC
+NO SQL
+BEGIN
+  DECLARE v TEXT;
+  SET v = fn_strip_accents_utf8mb4(p_text);
+  SET v = REGEXP_REPLACE(v, '[^A-Za-z0-9 ]+', ' ');
+  SET v = REGEXP_REPLACE(TRIM(v), '\\s+', ' ');
   RETURN v;
 END$$
 
@@ -66,9 +92,37 @@ BEGIN
   DECLARE v TEXT;
   SET v = fn_strip_accents_utf8mb4(p_text);
   SET v = REGEXP_REPLACE(v, '\\([^)]*\\)', ' ');
-  SET v = REGEXP_REPLACE(v, '[^a-z0-9]+', ' ');
+  SET v = LOWER(REGEXP_REPLACE(v, '[^A-Za-z0-9 ]+', ' '));
   SET v = REGEXP_REPLACE(TRIM(v), '\\s+', ' ');
   RETURN LEFT(v, 255);
+END$$
+
+CREATE FUNCTION fn_sanitize_digits_space(p_text TEXT)
+RETURNS VARCHAR(40)
+DETERMINISTIC
+NO SQL
+BEGIN
+  DECLARE v VARCHAR(80);
+  SET v = REGEXP_REPLACE(COALESCE(p_text, ''), '[^0-9 ]+', ' ');
+  SET v = REGEXP_REPLACE(TRIM(v), '\\s+', ' ');
+  IF v = '' THEN
+    RETURN NULL;
+  END IF;
+  RETURN LEFT(v, 40);
+END$$
+
+CREATE FUNCTION fn_sanitize_ascii_url(p_url VARCHAR(500), p_fallback VARCHAR(300))
+RETURNS VARCHAR(300)
+DETERMINISTIC
+NO SQL
+BEGIN
+  DECLARE v VARCHAR(500);
+  SET v = fn_strip_accents_utf8mb4(p_url);
+  SET v = REGEXP_REPLACE(v, '[^A-Za-z0-9._:/?=&-]+', '');
+  IF v REGEXP '^https?://[A-Za-z0-9._-]+([:/?=&A-Za-z0-9._-]*)$' THEN
+    RETURN LEFT(v, 300);
+  END IF;
+  RETURN p_fallback;
 END$$
 
 CREATE FUNCTION fn_normalize_ngo_domain(p_url VARCHAR(500))
@@ -77,8 +131,8 @@ DETERMINISTIC
 NO SQL
 BEGIN
   DECLARE v VARCHAR(500);
-  SET v = LOWER(TRIM(COALESCE(p_url, '')));
-  IF v = '' OR v = '#' THEN
+  SET v = LOWER(TRIM(fn_strip_accents_utf8mb4(COALESCE(p_url, ''))));
+  IF v = '' OR v = 'nao informado' THEN
     RETURN NULL;
   END IF;
 
@@ -88,7 +142,7 @@ BEGIN
   SET v = SUBSTRING_INDEX(v, '?', 1);
   SET v = SUBSTRING_INDEX(v, '#', 1);
   SET v = SUBSTRING_INDEX(v, ':', 1);
-  SET v = TRIM(v);
+  SET v = REGEXP_REPLACE(TRIM(v), '[^a-z0-9.-]+', '');
 
   IF v = '' OR INSTR(v, '.') = 0 THEN
     RETURN NULL;
@@ -100,10 +154,10 @@ END$$
 DELIMITER ;
 
 -- ----------------------------------------------------------------------------
--- 1. DIMENSÕES DO STAR SCHEMA (Todas com Chaves ASCII Sem Acento + Labels UTF-8)
+-- 1. DIMENSOES DO STAR SCHEMA (100% Sem Acentos e Sem Caracteres Especiais)
 -- ----------------------------------------------------------------------------
 
--- 1.1 Dimensão Temporal (dim_dates)
+-- 1.1 Dimensao Temporal (dim_dates)
 CREATE TABLE IF NOT EXISTS dim_dates (
   date_sk INT PRIMARY KEY,
   full_date DATE NOT NULL UNIQUE,
@@ -117,10 +171,11 @@ CREATE TABLE IF NOT EXISTS dim_dates (
   CONSTRAINT chk_dim_dates_quarter CHECK (quarter_num BETWEEN 1 AND 4),
   CONSTRAINT chk_dim_dates_month CHECK (month_num BETWEEN 1 AND 12),
   CONSTRAINT chk_dim_dates_day CHECK (day_of_month BETWEEN 1 AND 31),
-  CONSTRAINT chk_dim_dates_dow CHECK (day_of_week BETWEEN 0 AND 6)
+  CONSTRAINT chk_dim_dates_dow CHECK (day_of_week BETWEEN 0 AND 6),
+  CONSTRAINT chk_dim_dates_mkey_ascii CHECK (month_key_ascii COLLATE utf8mb4_bin REGEXP '^[a-z]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 1.2 Dimensão Categorias / Assuntos (dim_categories)
+-- 1.2 Dimensao Categorias / Assuntos (dim_categories)
 CREATE TABLE IF NOT EXISTS dim_categories (
   category_sk SMALLINT AUTO_INCREMENT PRIMARY KEY,
   category_key VARCHAR(32) NOT NULL UNIQUE,
@@ -134,18 +189,21 @@ CREATE TABLE IF NOT EXISTS dim_categories (
       'emergencia', 'psicologico', 'juridico', 'saude',
       'cursos', 'ongs_apoio', 'social', 'geral'
     )
-  )
+  ),
+  CONSTRAINT chk_dim_categories_label_ascii CHECK (label_utf8 COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_dim_categories_norm_ascii CHECK (label_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$'),
+  CONSTRAINT chk_dim_categories_desc_ascii CHECK (description_utf8 COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO dim_categories (category_key, label_utf8, label_normalized, description_utf8, priority_order, is_emergency)
 VALUES
-  ('emergencia', 'Protecao 24h e Emergencia', 'protecao 24h e emergencia', 'Delegacias da Mulher, Casa da Mulher Brasileira, abrigos, 180 e 190', 1, 1),
-  ('psicologico', 'Apoio Psicologico', 'apoio psicologico', 'Escuta acolhedora, clinicas-escola e atendimento sigiloso gratuito', 2, 0),
-  ('juridico', 'Advogada Gratuita e Direitos', 'advogada gratuita e direitos', 'Defensoria Publica, medidas protetivas, guarda, pensao e divorcio', 3, 0),
-  ('saude', 'Saude, Exames e Parto Humanizado', 'saude exames e parto humanizado', 'Casas de parto humanizado, ONGs de exames gratuitos e SUS', 4, 0),
-  ('cursos', 'Cursos Gratuitos e Renda', 'cursos gratuitos e renda', 'Capacitacao profissional gratuita, tecnologia e geracao de renda', 5, 0),
+  ('emergencia', 'Protecao 24h e Emergencia', 'protecao 24h e emergencia', 'Delegacias da Mulher Casa da Mulher Brasileira abrigos 180 e 190', 1, 1),
+  ('psicologico', 'Apoio Psicologico', 'apoio psicologico', 'Escuta acolhedora clinicas escola e atendimento sigiloso gratuito', 2, 0),
+  ('juridico', 'Advogada Gratuita e Direitos', 'advogada gratuita e direitos', 'Defensoria Publica medidas protetivas guarda pensao e divorcio', 3, 0),
+  ('saude', 'Saude Exames e Parto Humanizado', 'saude exames e parto humanizado', 'Casas de parto humanizado ONGs de exames gratuitos e SUS', 4, 0),
+  ('cursos', 'Cursos Gratuitos e Renda', 'cursos gratuitos e renda', 'Capacitacao profissional gratuita tecnologia e geracao de renda', 5, 0),
   ('ongs_apoio', 'ONGs que Ajudam', 'ongs que ajudam', 'Coletivos e projetos sociais liderados por voluntarias e especialistas', 6, 0),
-  ('social', 'Assistencia Social e Acolhimento', 'assistencia social e acolhimento', 'CRAS, CREAS e redes de assistencia social gratuitas', 7, 0),
+  ('social', 'Assistencia Social e Acolhimento', 'assistencia social e acolhimento', 'CRAS CREAS e redes de assistencia social gratuitas', 7, 0),
   ('geral', 'Busca Geral por Regiao', 'busca geral por regiao', 'Exploracao geral de servicos proximos em ate 30 km', 8, 0)
 ON DUPLICATE KEY UPDATE
   label_utf8 = VALUES(label_utf8),
@@ -154,30 +212,34 @@ ON DUPLICATE KEY UPDATE
   priority_order = VALUES(priority_order),
   is_emergency = VALUES(is_emergency);
 
--- 1.3 Dimensão Subcategorias de Serviço (dim_subcategories)
+-- 1.3 Dimensao Subcategorias de Servico (dim_subcategories)
 CREATE TABLE IF NOT EXISTS dim_subcategories (
   subcategory_sk INT AUTO_INCREMENT PRIMARY KEY,
   subcategory_normalized VARCHAR(160) NOT NULL UNIQUE,
-  subcategory_label VARCHAR(160) NOT NULL
+  subcategory_label VARCHAR(160) NOT NULL,
+  CONSTRAINT chk_dim_subcat_norm_ascii CHECK (subcategory_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$'),
+  CONSTRAINT chk_dim_subcat_label_ascii CHECK (subcategory_label COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 1.4 Dimensão Modos de Acesso (dim_access_modes)
+-- 1.4 Dimensao Modos de Acesso (dim_access_modes)
 CREATE TABLE IF NOT EXISTS dim_access_modes (
   access_mode_sk TINYINT AUTO_INCREMENT PRIMARY KEY,
   access_mode_key VARCHAR(40) NOT NULL UNIQUE,
-  access_mode_label VARCHAR(80) NOT NULL
+  access_mode_label VARCHAR(80) NOT NULL,
+  CONSTRAINT chk_dim_am_key_ascii CHECK (access_mode_key COLLATE utf8mb4_bin REGEXP '^[a-z0-9_]+$'),
+  CONSTRAINT chk_dim_am_label_ascii CHECK (access_mode_label COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO dim_access_modes (access_mode_key, access_mode_label)
 VALUES
-  ('livre_demanda', 'Livre Demanda (Porta Aberta)'),
+  ('livre_demanda', 'Livre Demanda Porta Aberta'),
   ('agendamento_previo', 'Agendamento Previo'),
   ('online_imediato', 'Online Imediato'),
   ('plantao_24h', 'Plantao 24h')
 ON DUPLICATE KEY UPDATE
   access_mode_label = VALUES(access_mode_label);
 
--- 1.5 Dimensão Canais de Acesso / Origem da Busca (dim_access_channels)
+-- 1.5 Dimensao Canais de Acesso / Origem da Busca (dim_access_channels)
 CREATE TABLE IF NOT EXISTS dim_access_channels (
   channel_sk TINYINT AUTO_INCREMENT PRIMARY KEY,
   channel_key VARCHAR(32) NOT NULL UNIQUE,
@@ -187,7 +249,8 @@ CREATE TABLE IF NOT EXISTS dim_access_channels (
       'web_cep', 'web_voice', 'triage_agent', 'category_card',
       'category_filter', 'ongs_directory', 'pwa_offline', 'widget_ngo'
     )
-  )
+  ),
+  CONSTRAINT chk_dim_access_channels_label_ascii CHECK (channel_label COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO dim_access_channels (channel_key, channel_label)
@@ -203,7 +266,7 @@ VALUES
 ON DUPLICATE KEY UPDATE
   channel_label = VALUES(channel_label);
 
--- 1.6 Dimensão Geográfica Normalizada (dim_regions — Zero-PII: nunca guarda CEP da usuária)
+-- 1.6 Dimensao Geografica Normalizada (dim_regions — Zero-PII: nunca guarda CEP)
 CREATE TABLE IF NOT EXISTS dim_regions (
   region_sk BIGINT AUTO_INCREMENT PRIMARY KEY,
   state_code CHAR(2) NOT NULL,
@@ -212,22 +275,27 @@ CREATE TABLE IF NOT EXISTS dim_regions (
   city_name VARCHAR(100) NOT NULL,
   city_normalized VARCHAR(100) NOT NULL,
   CONSTRAINT uq_dim_regions_state_city UNIQUE (state_code, city_normalized),
-  CONSTRAINT chk_dim_regions_state CHECK (state_code REGEXP '^[A-Z]{2}$'),
+  CONSTRAINT chk_dim_regions_state CHECK (state_code COLLATE utf8mb4_bin REGEXP '^[A-Z]{2}$'),
+  CONSTRAINT chk_dim_regions_sname_ascii CHECK (state_name_normalized COLLATE utf8mb4_bin REGEXP '^[a-z ]+$'),
   CONSTRAINT chk_dim_regions_macro CHECK (
-    macro_region IN ('Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul', 'Nacional')
-  )
+    macro_region IN ('Norte', 'Nordeste', 'Centro Oeste', 'Sudeste', 'Sul', 'Nacional')
+  ),
+  CONSTRAINT chk_dim_regions_cname_ascii CHECK (city_name COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_dim_regions_cnorm_ascii CHECK (city_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX idx_dim_regions_state_city ON dim_regions (state_code, city_normalized);
 
--- 1.7 Dimensão Organizações Mantenedoras de ONGs (dim_organizations — 3FN)
+-- 1.7 Dimensao Organizacoes Mantenedoras de ONGs (dim_organizations — 3FN)
 CREATE TABLE IF NOT EXISTS dim_organizations (
   organization_sk INT AUTO_INCREMENT PRIMARY KEY,
   organization_normalized VARCHAR(180) NOT NULL UNIQUE,
-  organization_name VARCHAR(180) NOT NULL
+  organization_name VARCHAR(180) NOT NULL,
+  CONSTRAINT chk_dim_orgs_norm_ascii CHECK (organization_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$'),
+  CONSTRAINT chk_dim_orgs_name_ascii CHECK (organization_name COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 1.8 Dimensão Áreas de Atuação de ONGs (dim_ngo_areas — 3FN)
+-- 1.8 Dimensao Areas de Atuacao de ONGs (dim_ngo_areas — 3FN)
 CREATE TABLE IF NOT EXISTS dim_ngo_areas (
   ngo_area_sk TINYINT AUTO_INCREMENT PRIMARY KEY,
   area_key VARCHAR(32) NOT NULL UNIQUE,
@@ -235,25 +303,29 @@ CREATE TABLE IF NOT EXISTS dim_ngo_areas (
   area_normalized VARCHAR(80) NOT NULL,
   CONSTRAINT chk_dim_ngo_areas_key CHECK (
     area_key IN ('saude_parto', 'psicologico_juridico', 'acolhimento_protecao', 'cursos_renda')
-  )
+  ),
+  CONSTRAINT chk_dim_ngo_areas_label_ascii CHECK (area_label COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_dim_ngo_areas_norm_ascii CHECK (area_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO dim_ngo_areas (area_key, area_label, area_normalized)
 VALUES
   ('psicologico_juridico', 'Psicologia e Juridico', 'psicologia e juridico'),
   ('acolhimento_protecao', 'Acolhimento e Protecao', 'acolhimento e protecao'),
-  ('saude_parto', 'Saude, Parto e Exames', 'saude parto e exames'),
+  ('saude_parto', 'Saude Parto e Exames', 'saude parto e exames'),
   ('cursos_renda', 'Cursos e Renda', 'cursos e renda')
 ON DUPLICATE KEY UPDATE
   area_label = VALUES(area_label),
   area_normalized = VALUES(area_normalized);
 
--- 1.9 Dimensão Intenções de Busca por Voz (dim_voice_intents — Voz -> Relacional)
+-- 1.9 Dimensao Intencoes de Busca por Voz (dim_voice_intents — Voz -> Relacional)
 CREATE TABLE IF NOT EXISTS dim_voice_intents (
   intent_sk SMALLINT AUTO_INCREMENT PRIMARY KEY,
   intent_key VARCHAR(40) NOT NULL UNIQUE,
   intent_label_normalized VARCHAR(100) NOT NULL,
   category_sk SMALLINT NOT NULL,
+  CONSTRAINT chk_dvi_key_ascii CHECK (intent_key COLLATE utf8mb4_bin REGEXP '^[a-z0-9_]+$'),
+  CONSTRAINT chk_dvi_label_ascii CHECK (intent_label_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$'),
   CONSTRAINT fk_voice_intent_category FOREIGN KEY (category_sk) REFERENCES dim_categories(category_sk)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -273,33 +345,37 @@ ON DUPLICATE KEY UPDATE
   intent_label_normalized = VALUES(intent_label_normalized),
   category_sk = VALUES(category_sk);
 
--- 1.10 Dimensão Palavras-Chave Relacionais de Voz (dim_voice_keywords — 1FN, sem acento)
+-- 1.10 Dimensao Palavras-Chave Relacionais de Voz (dim_voice_keywords — 1FN, sem acento)
 CREATE TABLE IF NOT EXISTS dim_voice_keywords (
   keyword_sk INT AUTO_INCREMENT PRIMARY KEY,
-  keyword_normalized VARCHAR(64) NOT NULL UNIQUE
+  keyword_normalized VARCHAR(64) NOT NULL UNIQUE,
+  CONSTRAINT chk_dvk_ascii CHECK (keyword_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 1.11 Dimensão Tags Normalizadas (dim_tags — 1FN, sem acento na chave)
+-- 1.11 Dimensao Tags Normalizadas (dim_tags — 1FN, zero acento e zero simbolo)
 CREATE TABLE IF NOT EXISTS dim_tags (
   tag_id INT AUTO_INCREMENT PRIMARY KEY,
   tag_slug VARCHAR(80) NOT NULL UNIQUE,
-  tag_label VARCHAR(80) NOT NULL
+  tag_label VARCHAR(80) NOT NULL,
+  CONSTRAINT chk_dim_tags_slug_ascii CHECK (tag_slug COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$'),
+  CONSTRAINT chk_dim_tags_label_ascii CHECK (tag_label COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
--- 2. TABELAS OPERACIONAIS NORMALIZADAS (3FN + Controle de Parceiras)
+-- 2. TABELAS OPERACIONAIS NORMALIZADAS (3FN + Constraints ASCII Estritas)
 -- ----------------------------------------------------------------------------
 
--- 2.1 Perfis de Parceiras e Admins (mulheres buscando ajuda nunca precisam de conta)
+-- 2.1 Perfis de Parceiras e Admins
 CREATE TABLE IF NOT EXISTS partner_profiles (
   id CHAR(36) PRIMARY KEY,
   organization_name VARCHAR(180) NOT NULL,
   role ENUM('admin', 'verified_ngo') NOT NULL DEFAULT 'verified_ngo',
   is_active TINYINT(1) NOT NULL DEFAULT 1,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_partner_org_ascii CHECK (organization_name COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2.2 Serviços Públicos e Sociais Gratuitos (100% 3FN, FKs para Dimensões)
+-- 2.2 Servicos Publicos e Sociais Gratuitos (100% 3FN, FKs para Dimensoes)
 CREATE TABLE IF NOT EXISTS services (
   id VARCHAR(100) PRIMARY KEY,
   name VARCHAR(200) NOT NULL,
@@ -312,7 +388,7 @@ CREATE TABLE IF NOT EXISTS services (
   is_national_online TINYINT(1) NOT NULL DEFAULT 0,
   neighborhood VARCHAR(120) NULL,
   address VARCHAR(280) NULL,
-  cep CHAR(9) NULL,
+  cep VARCHAR(8) NULL,
   lat DOUBLE NULL,
   lng DOUBLE NULL,
   phone VARCHAR(40) NULL,
@@ -326,6 +402,19 @@ CREATE TABLE IF NOT EXISTS services (
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   owner_id CHAR(36) NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT chk_services_id_ascii CHECK (id COLLATE utf8mb4_bin REGEXP '^[a-z0-9_-]+$'),
+  CONSTRAINT chk_services_name_ascii CHECK (name COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_services_namenorm_ascii CHECK (name_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$'),
+  CONSTRAINT chk_services_desc_ascii CHECK (description COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_services_neigh_ascii CHECK (neighborhood IS NULL OR neighborhood COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_services_addr_ascii CHECK (address IS NULL OR address COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_services_cep_digits CHECK (cep IS NULL OR cep COLLATE utf8mb4_bin REGEXP '^[0-9]{8}$'),
+  CONSTRAINT chk_services_phone_digits CHECK (phone IS NULL OR phone COLLATE utf8mb4_bin REGEXP '^[0-9 ]+$'),
+  CONSTRAINT chk_services_wa_digits CHECK (whatsapp IS NULL OR whatsapp COLLATE utf8mb4_bin REGEXP '^[0-9]+$'),
+  CONSTRAINT chk_services_web_ascii CHECK (website IS NULL OR website COLLATE utf8mb4_bin REGEXP '^https?://[A-Za-z0-9._:/?=&-]+$'),
+  CONSTRAINT chk_services_hours_ascii CHECK (hours COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_services_free_ascii CHECK (free_confirmation COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_services_tips_ascii CHECK (tips_for_woman IS NULL OR tips_for_woman COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
   CONSTRAINT fk_services_category FOREIGN KEY (category_sk) REFERENCES dim_categories(category_sk),
   CONSTRAINT fk_services_subcategory FOREIGN KEY (subcategory_sk) REFERENCES dim_subcategories(subcategory_sk),
   CONSTRAINT fk_services_region FOREIGN KEY (region_sk) REFERENCES dim_regions(region_sk),
@@ -336,7 +425,7 @@ CREATE TABLE IF NOT EXISTS services (
 CREATE INDEX idx_services_region_cat ON services (region_sk, category_sk, is_active, is_verified, requires_registration);
 CREATE INDEX idx_services_geo ON services (lat, lng);
 
--- 2.3 Tabela Associativa N:N service_tags (1FN — substitui array tags)
+-- 2.3 Tabela Associativa N:N service_tags (1FN)
 CREATE TABLE IF NOT EXISTS service_tags (
   service_id VARCHAR(100) NOT NULL,
   tag_id INT NOT NULL,
@@ -345,7 +434,7 @@ CREATE TABLE IF NOT EXISTS service_tags (
   CONSTRAINT fk_st_tag FOREIGN KEY (tag_id) REFERENCES dim_tags(tag_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2.4 ONGs Voltadas para Mulheres (100% 3FN + Índices UNIQUE Anti-Duplicidade)
+-- 2.4 ONGs Voltadas para Mulheres (100% 3FN + Anti-Duplicidade + ASCII Estrito)
 CREATE TABLE IF NOT EXISTS ngos (
   id VARCHAR(100) PRIMARY KEY,
   name VARCHAR(180) NOT NULL,
@@ -358,13 +447,22 @@ CREATE TABLE IF NOT EXISTS ngos (
   access_channel VARCHAR(200) NOT NULL,
   website_url VARCHAR(300) NOT NULL,
   website_domain_normalized VARCHAR(255) NULL,
-  privacy_note VARCHAR(300) NOT NULL DEFAULT 'Atendimento gratuito sem exposicao publica de dados.',
+  privacy_note VARCHAR(300) NOT NULL DEFAULT 'Atendimento gratuito sem exposicao publica de dados',
   featured TINYINT(1) NOT NULL DEFAULT 0,
   source_type ENUM('curated', 'partner_form', 'osm_discovery') NOT NULL DEFAULT 'curated',
   is_verified TINYINT(1) NOT NULL DEFAULT 0,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   owner_id CHAR(36) NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT chk_ngos_id_ascii CHECK (id COLLATE utf8mb4_bin REGEXP '^[a-z0-9_-]+$'),
+  CONSTRAINT chk_ngos_name_ascii CHECK (name COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_ngos_namenorm_ascii CHECK (name_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$'),
+  CONSTRAINT chk_ngos_cov_ascii CHECK (coverage COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_ngos_sum_ascii CHECK (summary COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_ngos_ch_ascii CHECK (access_channel COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_ngos_web_ascii CHECK (website_url = 'nao informado' OR website_url COLLATE utf8mb4_bin REGEXP '^https?://[A-Za-z0-9._:/?=&-]+$'),
+  CONSTRAINT chk_ngos_dom_ascii CHECK (website_domain_normalized IS NULL OR website_domain_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9.-]+$'),
+  CONSTRAINT chk_ngos_priv_ascii CHECK (privacy_note COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
   CONSTRAINT fk_ngos_org FOREIGN KEY (organization_sk) REFERENCES dim_organizations(organization_sk),
   CONSTRAINT fk_ngos_area FOREIGN KEY (ngo_area_sk) REFERENCES dim_ngo_areas(ngo_area_sk),
   CONSTRAINT fk_ngos_region FOREIGN KEY (region_sk) REFERENCES dim_regions(region_sk),
@@ -373,16 +471,19 @@ CREATE TABLE IF NOT EXISTS ngos (
   CONSTRAINT uq_ngos_domain_region UNIQUE (website_domain_normalized, region_sk)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2.5 Itens de Ajuda da ONG em 1FN (ngo_help_items — elimina array how_they_help)
+-- 2.5 Itens de Ajuda da ONG em 1FN (ngo_help_items)
 CREATE TABLE IF NOT EXISTS ngo_help_items (
   ngo_id VARCHAR(100) NOT NULL,
   item_order TINYINT NOT NULL,
   help_description VARCHAR(240) NOT NULL,
+  help_normalized VARCHAR(240) NOT NULL,
   PRIMARY KEY (ngo_id, item_order),
+  CONSTRAINT chk_nhi_desc_ascii CHECK (help_description COLLATE utf8mb4_bin REGEXP '^[A-Za-z0-9 ]+$'),
+  CONSTRAINT chk_nhi_norm_ascii CHECK (help_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$'),
   CONSTRAINT fk_nhi_ngo FOREIGN KEY (ngo_id) REFERENCES ngos(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2.6 Relacionamento N:N ONGs x Categorias (ngo_categories — elimina array related_categories)
+-- 2.6 Relacionamento N:N ONGs x Categorias (ngo_categories)
 CREATE TABLE IF NOT EXISTS ngo_categories (
   ngo_id VARCHAR(100) NOT NULL,
   category_sk SMALLINT NOT NULL,
@@ -395,7 +496,7 @@ CREATE TABLE IF NOT EXISTS ngo_categories (
 -- 3. TABELAS FATO DO STAR SCHEMA (Buscas Gerais + Pesquisas de Voz Relacionais)
 -- ----------------------------------------------------------------------------
 
--- 3.1 Fato Central de Demanda por Buscas (Grão: Data x Categoria x Região x Canal)
+-- 3.1 Fato Central de Demanda por Buscas
 CREATE TABLE IF NOT EXISTS fact_search_demand (
   fact_id BIGINT AUTO_INCREMENT PRIMARY KEY,
   date_sk INT NOT NULL,
@@ -427,6 +528,7 @@ CREATE TABLE IF NOT EXISTS fact_voice_searches (
   word_count TINYINT NOT NULL DEFAULT 1,
   search_count INT NOT NULL DEFAULT 1,
   CONSTRAINT uq_fact_voice_grain UNIQUE (date_sk, intent_sk, category_sk, region_sk, utterance_normalized),
+  CONSTRAINT chk_fvs_utt_ascii CHECK (utterance_normalized COLLATE utf8mb4_bin REGEXP '^[a-z0-9 ]+$'),
   CONSTRAINT chk_fvs_count CHECK (search_count > 0),
   CONSTRAINT fk_fvs_date FOREIGN KEY (date_sk) REFERENCES dim_dates(date_sk),
   CONSTRAINT fk_fvs_intent FOREIGN KEY (intent_sk) REFERENCES dim_voice_intents(intent_sk),
@@ -435,7 +537,7 @@ CREATE TABLE IF NOT EXISTS fact_voice_searches (
   CONSTRAINT fk_fvs_ch FOREIGN KEY (channel_sk) REFERENCES dim_access_channels(channel_sk)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 3.3 Ponte Relacional N:N entre Pesquisas por Voz e Palavras-Chave Normalizadas
+-- 3.3 Ponte Relacional N:N entre Pesquisas por Voz e Palavras-Chave
 CREATE TABLE IF NOT EXISTS fact_voice_search_keywords (
   voice_fact_sk BIGINT NOT NULL,
   keyword_sk INT NOT NULL,
@@ -473,7 +575,6 @@ BEGIN
   SET v_date = COALESCE(p_date, CURRENT_DATE());
   SET v_date_sk = CAST(DATE_FORMAT(v_date, '%Y%m%d') AS UNSIGNED);
   SET v_m = MONTH(v_date);
-  -- MySQL DAYOFWEEK: 1=Domingo..7=Sabado -> convertemos para 0=Dom..6=Sab
   SET v_dow = DAYOFWEEK(v_date) - 1;
   SET v_month_key = ELT(v_m,
     'janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho',
@@ -527,10 +628,10 @@ BEGIN
     WHEN 'PI' THEN SET v_state_norm = 'piaui'; SET v_macro = 'Nordeste';
     WHEN 'RN' THEN SET v_state_norm = 'rio grande do norte'; SET v_macro = 'Nordeste';
     WHEN 'SE' THEN SET v_state_norm = 'sergipe'; SET v_macro = 'Nordeste';
-    WHEN 'DF' THEN SET v_state_norm = 'distrito federal'; SET v_macro = 'Centro-Oeste';
-    WHEN 'GO' THEN SET v_state_norm = 'goias'; SET v_macro = 'Centro-Oeste';
-    WHEN 'MT' THEN SET v_state_norm = 'mato grosso'; SET v_macro = 'Centro-Oeste';
-    WHEN 'MS' THEN SET v_state_norm = 'mato grosso do sul'; SET v_macro = 'Centro-Oeste';
+    WHEN 'DF' THEN SET v_state_norm = 'distrito federal'; SET v_macro = 'Centro Oeste';
+    WHEN 'GO' THEN SET v_state_norm = 'goias'; SET v_macro = 'Centro Oeste';
+    WHEN 'MT' THEN SET v_state_norm = 'mato grosso'; SET v_macro = 'Centro Oeste';
+    WHEN 'MS' THEN SET v_state_norm = 'mato grosso do sul'; SET v_macro = 'Centro Oeste';
     WHEN 'ES' THEN SET v_state_norm = 'espirito santo'; SET v_macro = 'Sudeste';
     WHEN 'MG' THEN SET v_state_norm = 'minas gerais'; SET v_macro = 'Sudeste';
     WHEN 'RJ' THEN SET v_state_norm = 'rio de janeiro'; SET v_macro = 'Sudeste';
@@ -541,7 +642,7 @@ BEGIN
     ELSE SET v_uf = 'BR'; SET v_state_norm = 'brasil'; SET v_macro = 'Nacional';
   END CASE;
 
-  SET v_city = LEFT(TRIM(REGEXP_REPLACE(COALESCE(p_city, ''), '[0-9]+', '')), 100);
+  SET v_city = LEFT(fn_sanitize_ascii_text(REGEXP_REPLACE(COALESCE(p_city, ''), '[0-9]+', ' ')), 100);
   IF v_city = '' THEN
     SET v_city = IF(v_uf = 'BR', 'Nacional', 'Todo o estado');
   END IF;
@@ -575,8 +676,8 @@ BEGIN
   DECLARE v_norm VARCHAR(180);
   DECLARE v_sk INT DEFAULT NULL;
 
-  SET v_name = LEFT(TRIM(COALESCE(NULLIF(p_org_name, ''), 'Organizacao Parceira')), 180);
-  SET v_norm = LEFT(fn_normalize_key_ascii(v_name), 180);
+  SET v_name = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(p_org_name), ''), 'Organizacao Parceira'), 180);
+  SET v_norm = LEFT(COALESCE(NULLIF(fn_normalize_key_ascii(v_name), ''), 'organizacao parceira'), 180);
 
   SELECT organization_sk INTO v_sk
   FROM dim_organizations
@@ -602,8 +703,8 @@ BEGIN
   DECLARE v_norm VARCHAR(160);
   DECLARE v_sk INT DEFAULT NULL;
 
-  SET v_label = LEFT(TRIM(COALESCE(NULLIF(p_sub, ''), 'Servico Gratuito')), 160);
-  SET v_norm = LEFT(fn_normalize_key_ascii(v_label), 160);
+  SET v_label = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(p_sub), ''), 'Servico Gratuito'), 160);
+  SET v_norm = LEFT(COALESCE(NULLIF(fn_normalize_key_ascii(v_label), ''), 'servico gratuito'), 160);
 
   SELECT subcategory_sk INTO v_sk
   FROM dim_subcategories
@@ -619,7 +720,7 @@ BEGIN
   RETURN v_sk;
 END$$
 
--- Grava busca anônima no Star Schema (fact_search_demand)
+-- Grava busca anonima no Star Schema (fact_search_demand)
 CREATE PROCEDURE sp_record_star_search_demand(
   IN p_topic_key VARCHAR(32),
   IN p_state VARCHAR(10),
@@ -635,7 +736,7 @@ BEGIN
   DECLARE v_reg_sk BIGINT;
   DECLARE v_ch_sk TINYINT;
 
-  SET v_topic = LOWER(TRIM(COALESCE(p_topic_key, 'geral')));
+  SET v_topic = LOWER(REGEXP_REPLACE(COALESCE(p_topic_key, 'geral'), '[^a-z_]', ''));
   IF v_topic = 'social' THEN SET v_topic = 'ongs_apoio'; END IF;
 
   SELECT category_sk INTO v_cat_sk FROM dim_categories WHERE category_key = v_topic LIMIT 1;
@@ -643,7 +744,7 @@ BEGIN
     SELECT category_sk INTO v_cat_sk FROM dim_categories WHERE category_key = 'geral' LIMIT 1;
   END IF;
 
-  SET v_channel = LOWER(TRIM(COALESCE(p_channel_key, 'web_cep')));
+  SET v_channel = LOWER(REGEXP_REPLACE(COALESCE(p_channel_key, 'web_cep'), '[^a-z_]', ''));
   SELECT channel_sk INTO v_ch_sk FROM dim_access_channels WHERE channel_key = v_channel LIMIT 1;
   IF v_ch_sk IS NULL THEN
     SELECT channel_sk INTO v_ch_sk FROM dim_access_channels WHERE channel_key = 'web_cep' LIMIT 1;
@@ -682,20 +783,19 @@ BEGIN
   DECLARE v_tok VARCHAR(64);
   DECLARE v_kw_sk INT;
 
-  -- Remove quaisquer dígitos de CEP/telefone (Zero-PII) e remove todos os acentos
   IF p_raw_utterance REGEXP '[0-9]{4,}' THEN
     SET v_had_cep = 1;
   END IF;
 
-  SET v_clean = fn_strip_accents_utf8mb4(COALESCE(p_raw_utterance, ''));
+  SET v_clean = LOWER(fn_strip_accents_utf8mb4(COALESCE(p_raw_utterance, '')));
   SET v_clean = REGEXP_REPLACE(v_clean, '[0-9]{2,}', ' ');
-  SET v_clean = REGEXP_REPLACE(v_clean, '[^a-z ]+', ' ');
+  SET v_clean = REGEXP_REPLACE(v_clean, '[^a-z0-9 ]+', ' ');
   SET v_clean = LEFT(REGEXP_REPLACE(TRIM(v_clean), '\\s+', ' '), 160);
   IF v_clean = '' THEN
     SET v_clean = IF(v_had_cep = 1, 'busca por cep falado', 'busca por voz');
   END IF;
 
-  SET v_topic = LOWER(TRIM(COALESCE(p_detected_topic, '')));
+  SET v_topic = LOWER(REGEXP_REPLACE(COALESCE(p_detected_topic, ''), '[^a-z_]', ''));
   IF v_topic = '' OR v_topic = 'todos' THEN
     IF v_clean REGEXP '\\b(emergencia|socorro|perigo|delegacia|deam|violencia|abrigo|policia|denuncia)\\b' THEN SET v_topic = 'emergencia';
     ELSEIF v_clean REGEXP '\\b(psicolog|emocional|terapia|cvv|ansiedade|escuta|depress)\\b' THEN SET v_topic = 'psicologico';
@@ -743,7 +843,6 @@ BEGIN
 
   SET v_voice_fact_sk = LAST_INSERT_ID();
 
-  -- Extrai tokens relevantes (> 2 chars) para tabela relacional fact_voice_search_keywords
   SET v_rest = CONCAT(v_clean, ' ');
   WHILE LENGTH(v_rest) > 0 DO
     SET v_tok = SUBSTRING_INDEX(v_rest, ' ', 1);
@@ -759,11 +858,10 @@ BEGIN
     END IF;
   END WHILE;
 
-  -- Atualiza também a tabela fato agregada geral no mesmo grão do Star Schema
   CALL sp_record_star_search_demand(v_topic, p_state, p_city, 'web_voice');
 END$$
 
--- Cadastro seguro de ONG sem duplicidade e bloqueando serviços pagos
+-- Cadastro seguro de ONG sem duplicidade, sem acento e sem caracteres especiais
 CREATE PROCEDURE sp_register_ngo_candidate(
   IN p_name VARCHAR(180),
   IN p_organization VARCHAR(180),
@@ -783,6 +881,8 @@ CREATE PROCEDURE sp_register_ngo_candidate(
 )
 SQL SECURITY DEFINER
 BEGIN
+  DECLARE v_name VARCHAR(180);
+  DECLARE v_org VARCHAR(180);
   DECLARE v_name_norm VARCHAR(180);
   DECLARE v_domain_norm VARCHAR(255);
   DECLARE v_reg_sk BIGINT;
@@ -790,22 +890,27 @@ BEGIN
   DECLARE v_area_sk TINYINT;
   DECLARE v_existing_id VARCHAR(100) DEFAULT NULL;
   DECLARE v_verified TINYINT(1);
+  DECLARE v_url VARCHAR(300);
+
+  SET v_name = LEFT(fn_sanitize_ascii_text(p_name), 180);
+  SET v_org = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(p_organization), ''), v_name), 180);
+  SET v_url = fn_sanitize_ascii_url(p_website_url, 'nao informado');
 
   IF COALESCE(p_is_free_confirmed, 0) <> 1 THEN
     SET p_status = 'invalid';
     SET p_ngo_id = NULL;
-    SET p_message = 'Apenas ONGs 100% gratuitas podem ser cadastradas.';
-  ELSEIF CHAR_LENGTH(TRIM(COALESCE(p_name, ''))) < 4 THEN
+    SET p_message = 'Apenas ONGs 100 por cento gratuitas podem ser cadastradas';
+  ELSEIF CHAR_LENGTH(v_name) < 4 THEN
     SET p_status = 'invalid';
     SET p_ngo_id = NULL;
-    SET p_message = 'Nome da ONG obrigatorio (minimo 4 caracteres).';
-  ELSEIF fn_strip_accents_utf8mb4(CONCAT_WS(' ', p_name, p_organization, p_summary)) REGEXP '(mensalidade|plano de saude|convenio|particular|privad[oa]|unimed|hapvida|amil|bradesco saude|sulamerica|consulta paga)' THEN
+    SET p_message = 'Nome da ONG obrigatorio minimo 4 caracteres';
+  ELSEIF LOWER(CONCAT_WS(' ', v_name, v_org, fn_sanitize_ascii_text(p_summary))) REGEXP '(mensalidade|plano de saude|convenio|particular|privado|privada|unimed|hapvida|amil|bradesco saude|sulamerica|consulta paga)' THEN
     SET p_status = 'invalid';
     SET p_ngo_id = NULL;
-    SET p_message = 'Servicos pagos ou planos de saude nao sao permitidos.';
+    SET p_message = 'Servicos pagos ou planos de saude nao sao permitidos';
   ELSE
-    SET v_name_norm = LEFT(fn_normalize_key_ascii(p_name), 180);
-    SET v_domain_norm = fn_normalize_ngo_domain(p_website_url);
+    SET v_name_norm = LEFT(fn_normalize_key_ascii(v_name), 180);
+    SET v_domain_norm = fn_normalize_ngo_domain(v_url);
     SET v_reg_sk = fn_ensure_dim_region(p_state, p_city);
 
     SELECT id INTO v_existing_id
@@ -817,9 +922,9 @@ BEGIN
     IF v_existing_id IS NOT NULL THEN
       SET p_status = 'duplicate';
       SET p_ngo_id = v_existing_id;
-      SET p_message = 'Esta ONG ja esta cadastrada no banco de dados (anti-duplicidade).';
+      SET p_message = 'Esta ONG ja esta cadastrada no banco de dados sem duplicidade';
     ELSE
-      SET v_org_sk = fn_ensure_dim_organization(COALESCE(NULLIF(p_organization, ''), p_name));
+      SET v_org_sk = fn_ensure_dim_organization(v_org);
       SELECT ngo_area_sk INTO v_area_sk FROM dim_ngo_areas WHERE area_key = COALESCE(p_area_key, 'acolhimento_protecao') LIMIT 1;
       IF v_area_sk IS NULL THEN
         SELECT ngo_area_sk INTO v_area_sk FROM dim_ngo_areas WHERE area_key = 'acolhimento_protecao' LIMIT 1;
@@ -831,47 +936,65 @@ BEGIN
       INSERT INTO ngos (
         id, name, name_normalized, organization_sk, ngo_area_sk, region_sk,
         coverage, summary, access_channel, website_url, website_domain_normalized,
-        privacy_note, featured, source_type, is_verified, is_active
+        privacy_note, featured, source_type, is_verified, is_active, owner_id
       )
       VALUES (
         p_ngo_id,
-        LEFT(TRIM(p_name), 180),
+        v_name,
         v_name_norm,
         v_org_sk,
         v_area_sk,
         v_reg_sk,
-        LEFT(COALESCE(NULLIF(p_coverage, ''), 'Brasil'), 160),
-        LEFT(TRIM(p_summary), 800),
-        LEFT(COALESCE(NULLIF(p_access_channel, ''), 'Atendimento gratuito pelo site'), 200),
-        CASE WHEN TRIM(COALESCE(p_website_url, '')) = '' THEN '#' ELSE LEFT(TRIM(p_website_url), 300) END,
+        LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(p_coverage), ''), 'Brasil'), 160),
+        LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(p_summary), ''), 'Atendimento gratuito para mulheres'), 800),
+        LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(p_access_channel), ''), 'Atendimento gratuito pelo site'), 200),
+        v_url,
         v_domain_norm,
-        LEFT(COALESCE(NULLIF(p_privacy_note, ''), 'Atendimento gratuito e sigiloso.'), 300),
+        LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(p_privacy_note), ''), 'Atendimento gratuito e sigiloso'), 300),
         0,
         IF(p_source_type = 'osm_discovery', 'osm_discovery', 'partner_form'),
         v_verified,
-        1
+        1,
+        @current_partner_uid
       );
 
       SET p_status = 'inserted';
-      SET p_message = 'ONG gravada no banco relacional sem duplicidade.';
+      SET p_message = 'ONG gravada no banco sem acentos sem caracteres especiais e sem duplicidade';
     END IF;
   END IF;
 END$$
 
 -- ----------------------------------------------------------------------------
--- 5. ISOLAMENTO POR LINHA EM MYSQL ("RLS"): TRIGGERS DE PROPRIEDADE E INTEGRIDADE
+-- 5. TRIGGERS DE SANITIZACAO ESTRITA + ISOLAMENTO POR LINHA ("RLS" NO MYSQL)
 -- ----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS trg_services_bi_guard$$
+DROP TRIGGER IF EXISTS trg_services_bu_guard$$
+DROP TRIGGER IF EXISTS trg_ngos_bi_guard$$
+DROP TRIGGER IF EXISTS trg_ngos_bu_guard$$
+DROP TRIGGER IF EXISTS trg_ngo_help_bi_sanitize$$
+
 CREATE TRIGGER trg_services_bi_guard
 BEFORE INSERT ON services
 FOR EACH ROW
 BEGIN
-  IF NEW.name_normalized IS NULL OR NEW.name_normalized = '' THEN
-    SET NEW.name_normalized = LEFT(fn_normalize_key_ascii(NEW.name), 200);
-  END IF;
+  DECLARE v_cep VARCHAR(20);
+  SET NEW.name = COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.name), ''), 'Servico Publico Gratuito');
+  SET NEW.name_normalized = COALESCE(NULLIF(fn_normalize_key_ascii(NEW.name), ''), 'servico publico gratuito');
+  SET NEW.description = COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.description), ''), 'Atendimento gratuito');
+  SET NEW.neighborhood = NULLIF(fn_sanitize_ascii_text(NEW.neighborhood), '');
+  SET NEW.address = NULLIF(fn_sanitize_ascii_text(NEW.address), '');
+  SET v_cep = REGEXP_REPLACE(COALESCE(NEW.cep, ''), '[^0-9]', '');
+  SET NEW.cep = IF(LENGTH(v_cep) = 8, v_cep, NULL);
+  SET NEW.phone = fn_sanitize_digits_space(NEW.phone);
+  SET NEW.whatsapp = NULLIF(REGEXP_REPLACE(COALESCE(NEW.whatsapp, ''), '[^0-9]', ''), '');
+  SET NEW.website = fn_sanitize_ascii_url(NEW.website, NULL);
+  SET NEW.hours = COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.hours), ''), 'Consultar atendimento');
+  SET NEW.free_confirmation = COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.free_confirmation), ''), '100 por cento gratuito');
+  SET NEW.tips_for_woman = NULLIF(fn_sanitize_ascii_text(NEW.tips_for_woman), '');
 
   IF COALESCE(@current_partner_role, '') <> 'admin' THEN
     IF NEW.owner_id IS NULL OR NEW.owner_id <> COALESCE(@current_partner_uid, '') THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'RLS MySQL: apenas parceiras autenticadas podem inserir seus proprios servicos.';
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'RLS MySQL apenas parceiras autenticadas podem inserir seus servicos';
     END IF;
   END IF;
 END$$
@@ -880,9 +1003,44 @@ CREATE TRIGGER trg_services_bu_guard
 BEFORE UPDATE ON services
 FOR EACH ROW
 BEGIN
+  DECLARE v_cep VARCHAR(20);
+  SET NEW.name = COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.name), ''), 'Servico Publico Gratuito');
+  SET NEW.name_normalized = COALESCE(NULLIF(fn_normalize_key_ascii(NEW.name), ''), 'servico publico gratuito');
+  SET NEW.description = COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.description), ''), 'Atendimento gratuito');
+  SET NEW.neighborhood = NULLIF(fn_sanitize_ascii_text(NEW.neighborhood), '');
+  SET NEW.address = NULLIF(fn_sanitize_ascii_text(NEW.address), '');
+  SET v_cep = REGEXP_REPLACE(COALESCE(NEW.cep, ''), '[^0-9]', '');
+  SET NEW.cep = IF(LENGTH(v_cep) = 8, v_cep, NULL);
+  SET NEW.phone = fn_sanitize_digits_space(NEW.phone);
+  SET NEW.whatsapp = NULLIF(REGEXP_REPLACE(COALESCE(NEW.whatsapp, ''), '[^0-9]', ''), '');
+  SET NEW.website = fn_sanitize_ascii_url(NEW.website, NULL);
+  SET NEW.hours = COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.hours), ''), 'Consultar atendimento');
+  SET NEW.free_confirmation = COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.free_confirmation), ''), '100 por cento gratuito');
+  SET NEW.tips_for_woman = NULLIF(fn_sanitize_ascii_text(NEW.tips_for_woman), '');
+
   IF COALESCE(@current_partner_role, '') <> 'admin' THEN
     IF OLD.owner_id IS NULL OR OLD.owner_id <> COALESCE(@current_partner_uid, '') THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'RLS MySQL: permissao negada para alterar servico de outra organizacao.';
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'RLS MySQL permissao negada para alterar servico de outra organizacao';
+    END IF;
+  END IF;
+END$$
+
+CREATE TRIGGER trg_ngos_bi_guard
+BEFORE INSERT ON ngos
+FOR EACH ROW
+BEGIN
+  SET NEW.name = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.name), ''), 'ONG Parceira'), 180);
+  SET NEW.name_normalized = LEFT(COALESCE(NULLIF(fn_normalize_key_ascii(NEW.name), ''), 'ong parceira'), 180);
+  SET NEW.coverage = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.coverage), ''), 'Todo o Brasil'), 160);
+  SET NEW.summary = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.summary), ''), 'Atendimento gratuito para mulheres'), 800);
+  SET NEW.access_channel = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.access_channel), ''), 'Atendimento gratuito pelo site'), 200);
+  SET NEW.website_url = fn_sanitize_ascii_url(NEW.website_url, 'nao informado');
+  SET NEW.website_domain_normalized = fn_normalize_ngo_domain(NEW.website_url);
+  SET NEW.privacy_note = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.privacy_note), ''), 'Atendimento gratuito sem exposicao publica de dados'), 300);
+
+  IF COALESCE(@current_partner_role, '') <> 'admin' THEN
+    IF NEW.owner_id IS NULL OR NEW.owner_id <> COALESCE(@current_partner_uid, '') THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'RLS MySQL apenas parceiras autenticadas podem inserir ONGs';
     END IF;
   END IF;
 END$$
@@ -891,17 +1049,34 @@ CREATE TRIGGER trg_ngos_bu_guard
 BEFORE UPDATE ON ngos
 FOR EACH ROW
 BEGIN
+  SET NEW.name = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.name), ''), 'ONG Parceira'), 180);
+  SET NEW.name_normalized = LEFT(COALESCE(NULLIF(fn_normalize_key_ascii(NEW.name), ''), 'ong parceira'), 180);
+  SET NEW.coverage = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.coverage), ''), 'Todo o Brasil'), 160);
+  SET NEW.summary = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.summary), ''), 'Atendimento gratuito para mulheres'), 800);
+  SET NEW.access_channel = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.access_channel), ''), 'Atendimento gratuito pelo site'), 200);
+  SET NEW.website_url = fn_sanitize_ascii_url(NEW.website_url, 'nao informado');
+  SET NEW.website_domain_normalized = fn_normalize_ngo_domain(NEW.website_url);
+  SET NEW.privacy_note = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.privacy_note), ''), 'Atendimento gratuito sem exposicao publica de dados'), 300);
+
   IF COALESCE(@current_partner_role, '') <> 'admin' THEN
     IF OLD.owner_id IS NULL OR OLD.owner_id <> COALESCE(@current_partner_uid, '') THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'RLS MySQL: permissao negada para alterar ONG de outra organizacao.';
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'RLS MySQL permissao negada para alterar ONG de outra organizacao';
     END IF;
   END IF;
+END$$
+
+CREATE TRIGGER trg_ngo_help_bi_sanitize
+BEFORE INSERT ON ngo_help_items
+FOR EACH ROW
+BEGIN
+  SET NEW.help_description = LEFT(COALESCE(NULLIF(fn_sanitize_ascii_text(NEW.help_description), ''), 'Apoio gratuito para mulheres'), 240);
+  SET NEW.help_normalized = LEFT(COALESCE(NULLIF(fn_normalize_key_ascii(NEW.help_description), ''), 'apoio gratuito para mulheres'), 240);
 END$$
 
 DELIMITER ;
 
 -- ----------------------------------------------------------------------------
--- 6. VIEWS ANALÍTICAS & PÚBLICAS COM SQL SECURITY DEFINER ("RLS DE LEITURA")
+-- 6. VIEWS ANALITICAS E PUBLICAS COM SQL SECURITY DEFINER ("RLS DE LEITURA")
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE SQL SECURITY DEFINER VIEW vw_public_services_star AS
 SELECT
@@ -1014,9 +1189,55 @@ JOIN dim_categories c ON c.category_sk = v.category_sk
 JOIN dim_regions r ON r.region_sk = v.region_sk;
 
 -- ----------------------------------------------------------------------------
--- 7. SEED NORMALIZADO COMPLETO DAS 14 ONGs VERIFICADAS (100% 3FN / 1FN)
+-- 7. SEED NORMALIZADO SEM ACENTOS E SEM CARACTERES ESPECIAIS (SERVICOS + 14 ONGS)
 -- ----------------------------------------------------------------------------
 SET @current_partner_role = 'admin';
+
+INSERT INTO services (
+  id, name, name_normalized, category_sk, subcategory_sk, region_sk, access_mode_sk,
+  description, is_national_online, neighborhood, address, cep, lat, lng,
+  phone, whatsapp, website, hours, requires_registration, free_confirmation, is_verified, is_active
+)
+SELECT
+  s.id,
+  s.name,
+  fn_normalize_key_ascii(s.name),
+  (SELECT category_sk FROM dim_categories WHERE category_key = s.cat_key LIMIT 1),
+  fn_ensure_dim_subcategory(s.subcat),
+  fn_ensure_dim_region(s.uf, s.city),
+  (SELECT access_mode_sk FROM dim_access_modes WHERE access_mode_key = s.am_key LIMIT 1),
+  s.descr,
+  s.nat_online,
+  s.neigh,
+  s.addr,
+  s.cep,
+  s.lat,
+  s.lng,
+  s.phone,
+  s.wa,
+  s.web,
+  s.hrs,
+  0,
+  s.free_conf,
+  1,
+  1
+FROM (
+  SELECT 'ligue-180' AS id, 'Central de Atendimento a Mulher Ligue 180' AS name, 'emergencia' AS cat_key, 'Plantao Nacional de Acolhimento e Denuncia' AS subcat, 'BR' AS uf, 'Nacional' AS city, 'plantao_24h' AS am_key, 'Escuta qualificada orientacao juridica e encaminhamento para a rede local 24h' AS descr, 1 AS nat_online, NULL AS neigh, NULL AS addr, NULL AS cep, NULL AS lat, NULL AS lng, '180' AS phone, '556196100180' AS wa, 'https://www.gov.br/mulheres/pt-br/central-de-atendimento-a-mulher-ligue-180' AS web, '24 horas por dia 7 dias por semana' AS hrs, 'Ligacao 100 por cento gratuita funciona mesmo sem creditos' AS free_conf
+  UNION ALL SELECT 'policia-190', 'Policia Militar Emergencia 190', 'emergencia', 'Socorro Imediato', 'BR', 'Nacional', 'plantao_24h', 'Atendimento imediato em risco iminente ou descumprimento de Medida Protetiva', 1, NULL, NULL, NULL, NULL, NULL, '190', NULL, NULL, '24 horas ininterruptas', 'Chamada publica gratuita'
+  UNION ALL SELECT 'americas-amigas-exames', 'ONG Americas Amigas Mamografias e Exames Gratuitos', 'saude', 'ONG Exames Gratuitos de Mama', 'BR', 'Nacional', 'online_imediato', 'ONG que custeia gratuitamente mamografias ultrassons de mama e biopsias para mulheres de baixa renda', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'https://americasamigas.org.br', 'Solicitacao online', '100 por cento gratuito'
+  UNION ALL SELECT 'sesc-saude-mulher', 'Sesc Saude da Mulher Carretas de Exames Gratuitos', 'saude', 'Unidade Movel Mamografia e Papanicolau', 'BR', 'Nacional', 'livre_demanda', 'Carretas moveis que realizam gratuitamente exames de mamografia e preventivo do colo do utero', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'https://www.sesc.com.br/atuacoes/saude/sesc-saude-mulher/', 'Calendario municipal', '100 por cento gratuito'
+  UNION ALL SELECT 'sp-casa-angela', 'Casa Angela Centro de Parto Humanizado ONG Monte Azul', 'saude', 'ONG Casa de Parto Humanizado Gratuito', 'SP', 'Sao Paulo', 'livre_demanda', 'Organizacao sem fins lucrativos referencia em parto humanizado gratuito pre natal e pos parto', 0, 'Jardim Monte Azul', 'Rua Dr Luis da Fonseca Galvao 248 Jardim Monte Azul Sao Paulo SP', '04914050', -23.6795, -46.7521, '11 5852 5332', NULL, 'https://casaangela.org.br', 'Plantao 24h para partos', '100 por cento gratuito via parceria ONG e SUS'
+  UNION ALL SELECT 'rj-casa-parto-david-capistrano', 'Casa de Parto David Capistrano Filho', 'saude', 'Casa de Parto Humanizado Gratuito', 'RJ', 'Rio de Janeiro', 'livre_demanda', 'Centro de parto normal humanizado em Realengo com pre natal e pos parto gratuitos', 0, 'Realengo', 'Av Pontalina s n Realengo Rio de Janeiro RJ', '21741400', -22.8781, -43.4317, '21 3331 1899', NULL, NULL, '24 horas para partos', '100 por cento gratuito'
+  UNION ALL SELECT 'ba-cpn-mansao-caminho', 'Centro de Parto Normal Marieta de Souza Pereira Mansao do Caminho', 'saude', 'Instituicao Social Parto Humanizado Gratuito', 'BA', 'Salvador', 'livre_demanda', 'Centro de parto humanizado mantido pela obra social Mansao do Caminho gratuitamente', 0, 'Pau da Lima', 'Rua Jayme Vieira Lima 104 Pau da Lima Salvador BA', '41235000', -12.9277, -38.4316, '71 3393 1910', NULL, NULL, '24 horas', '100 por cento gratuito'
+  UNION ALL SELECT 'mg-hospital-sofia-feldman', 'Hospital Sofia Feldman Casa de Parto e Saude da Mulher', 'saude', 'Instituicao Filantropica Parto Humanizado Gratuito', 'MG', 'Belo Horizonte', 'livre_demanda', 'Instituicao filantropica referencia nacional em parto humanizado 100 por cento gratuito com doulas', 0, 'Tupi', 'Rua Antonio Bandeira 1060 Tupi Belo Horizonte MG', '31844130', -19.8407, -43.9163, '31 3408 2200', NULL, NULL, '24 horas', '100 por cento gratuito'
+) s
+ON DUPLICATE KEY UPDATE
+  name = VALUES(name),
+  description = VALUES(description),
+  hours = VALUES(hours),
+  free_confirmation = VALUES(free_confirmation),
+  is_verified = 1,
+  is_active = 1;
 
 INSERT INTO ngos (
   id, name, name_normalized, organization_sk, ngo_area_sk, region_sk,
@@ -1041,38 +1262,39 @@ SELECT
   1,
   1
 FROM (
-  SELECT 'ngo-nova-mulher-sp-zn' AS id, 'ONG Nova Mulher - Centro Psicossocial (Zona Norte SP)' AS name, 'ONG Nova Mulher' AS org_name, 'psicologico_juridico' AS area_key, 'SP' AS uf, 'Sao Paulo' AS city, 'Sao Paulo - SP (Zona Norte)' AS coverage, 'Atendimento psicossocial gratuito com psicologas e assistentes sociais para mulheres na Zona Norte de Sao Paulo.' AS summary, 'Presencial e WhatsApp: (11) 98641-0956' AS access_channel, 'https://ongnovamulher.org' AS website_url, 'Rua Adolfo Kurt Bohem, 43 - Vila Nova Cachoeirinha, Sao Paulo - SP' AS privacy_note, 1 AS featured
-  UNION ALL SELECT 'ngo-fala-mulher-sp', 'Associacao Fala Mulher', 'Associacao Fala Mulher', 'psicologico_juridico', 'SP', 'Sao Paulo', 'Sao Paulo e Grande SP', 'Organizacao que administra Centros de Defesa e de Convivencia da Mulher com atendimento psicologico, social e juridico gratuitos.', 'Canais oficiais', 'https://falamulher.ong.br', 'Atendimento gratuito sem exigir boletim de ocorrencia.', 1
-  UNION ALL SELECT 'ngo-mapa-acolhimento', 'Mapa do Acolhimento', 'Rede NOSSAS', 'psicologico_juridico', 'BR', 'Nacional', 'Todo o Brasil (Online e Presencial)', 'Conecta gratuitamente mulheres que sofrem ou sofreram violencia a psicologas e advogadas voluntarias.', 'Cadastro rapido online', 'https://www.mapadoacolhimento.org', 'Atendimento sigiloso conduzido por voluntarias verificadas.', 1
-  UNION ALL SELECT 'ngo-justiceiras', 'Projeto Justiceiras', 'Instituto Justiceiras', 'acolhimento_protecao', 'BR', 'Nacional', 'Todo o Brasil (Online)', 'Equipe multidisciplinar voluntaria para orientacao juridica, psicologica, medica e assistencial.', 'WhatsApp e Formulario Web', 'https://justiceiras.org.br', 'Prefira navegar em aba anonima se houver risco.', 1
-  UNION ALL SELECT 'ngo-odara-ba', 'Odara - Instituto da Mulher Negra (Salvador e Chapada Diamantina)', 'Instituto Odara', 'acolhimento_protecao', 'BA', 'Salvador e Chapada Diamantina', 'Bahia (Salvador, Chapada Diamantina e interior)', 'Organizacao feminista baiana com atuacao em Salvador e interior da Chapada Diamantina para saude e enfrentamento a violencia.', 'Projetos territoriais e site', 'https://institutoodara.org.br', 'Atuacao sem fins lucrativos na Bahia.', 1
-  UNION ALL SELECT 'ngo-tamojuntas', 'Organizacao TamoJuntas', 'Coletivo Nacional TamoJuntas', 'psicologico_juridico', 'BR', 'Nacional', 'Bahia, Nordeste e todo o Brasil', 'Assessoria gratuita juridica, psicologica e assistencial feita por mulheres.', 'Solicitacao pelo site', 'https://tamojuntas.org.br', 'Acolhimento interseccional em linguagem simples.', 1
-  UNION ALL SELECT 'ngo-americas-amigas', 'ONG Americas Amigas', 'Americas Amigas', 'saude_parto', 'BR', 'Nacional', 'Todo o Brasil', 'ONG que doa e realiza gratuitamente exames de mamografia, ultrassom de mama e biopsias.', 'Solicitacao pelo site', 'https://americasamigas.org.br', 'Atendimento gratuito para mulheres sem plano.', 0
-  UNION ALL SELECT 'ngo-instituto-protea', 'Instituto Protea', 'ONG Instituto Protea', 'saude_parto', 'BR', 'Nacional', 'Sao Paulo e redes parceiras', 'Custeia gratuitamente consultas, exames de imagem, biopsias e tratamento de cancer de mama.', 'Encaminhamento via site', 'https://institutoprotea.org.br', 'Voltado a mulheres sem plano privado.', 0
-  UNION ALL SELECT 'ngo-casa-angela', 'Casa Angela - Centro de Parto Humanizado', 'Associacao Comunitaria Monte Azul', 'saude_parto', 'SP', 'Sao Paulo', 'Sao Paulo - SP (SUS e apoio social)', 'Casa de parto sem fins lucrativos que oferece pre-natal e parto humanizado gratuito.', 'Grupos gratuitos e presencial', 'https://casaangela.org.br', 'Atendimento gratuito para gestantes.', 0
-  UNION ALL SELECT 'ngo-rede-feminina-cancer', 'Rede Feminina de Combate ao Cancer', 'Federacao Nacional das Redes Femininas', 'saude_parto', 'BR', 'Nacional', 'Todo o Brasil (Nucleos regionais)', 'Realiza exames preventivos (Papanicolau e mama) e acolhe mulheres gratuitamente.', 'Presencial nas sedes regionais', 'https://redefemininanacional.org.br', 'Atendimento direto sem burocracia.', 0
-  UNION ALL SELECT 'ngo-penhas-azmina', 'Instituto AzMina - Rede PenhaS', 'Revista AzMina', 'acolhimento_protecao', 'BR', 'Nacional', 'Nacional (App e Portal)', 'Informacao clara sobre violencia contra a mulher, rede de apoio e botao de alerta.', 'Plataforma digital', 'https://penhas.com.br', 'Leitura aberta sem cadastro.', 1
-  UNION ALL SELECT 'ngo-instituto-maria-da-penha', 'Instituto Maria da Penha (IMP)', 'ONG Instituto Maria da Penha', 'acolhimento_protecao', 'BR', 'Nacional', 'Nacional (Fortaleza e Recife)', 'Guias gratuitos sobre os 5 tipos de violencia, Lei Maria da Penha e denuncias.', 'Guias abertos no site', 'https://www.institutomariadapenha.org.br', 'Material aberto e gratuito.', 0
-  UNION ALL SELECT 'ngo-reprograma', 'reprograma', 'Iniciativa de Impacto Social em Tecnologia', 'cursos_renda', 'BR', 'Nacional', 'Todo o Brasil (Turmas Online)', 'Bolsas 100% gratuitas de formacao em programacao e tecnologia para mulheres.', 'Editais gratuitos', 'https://reprograma.com.br', '100% gratuito com foco em autonomia.', 0
-  UNION ALL SELECT 'ngo-rme', 'Rede Mulher Empreendedora (Instituto RME)', 'Instituto Rede Mulher Empreendedora', 'cursos_renda', 'BR', 'Nacional', 'Nacional (Online e nucleos)', 'Cursos gratuitos de empreendedorismo, financas pessoais e geracao de renda.', 'Trilhas gratuitas no site', 'https://irmesocial.org.br', 'Programas gratuitos para mulheres.', 0
+  SELECT 'ngo-nova-mulher-sp-zn' AS id, 'ONG Nova Mulher Centro Psicossocial Zona Norte SP' AS name, 'ONG Nova Mulher' AS org_name, 'psicologico_juridico' AS area_key, 'SP' AS uf, 'Sao Paulo' AS city, 'Sao Paulo SP Zona Norte' AS coverage, 'Atendimento psicossocial gratuito com psicologas e assistentes sociais para mulheres na Zona Norte de Sao Paulo' AS summary, 'Presencial e WhatsApp 11 98641 0956' AS access_channel, 'https://ongnovamulher.org' AS website_url, 'Rua Adolfo Kurt Bohem 43 Vila Nova Cachoeirinha Sao Paulo SP' AS privacy_note, 1 AS featured
+  UNION ALL SELECT 'ngo-fala-mulher-sp', 'Associacao Fala Mulher', 'Associacao Fala Mulher', 'psicologico_juridico', 'SP', 'Sao Paulo', 'Sao Paulo e Grande SP', 'Organizacao que administra Centros de Defesa e de Convivencia da Mulher com atendimento psicologico social e juridico gratuitos', 'Canais oficiais', 'https://falamulher.ong.br', 'Atendimento gratuito sem exigir boletim de ocorrencia', 1
+  UNION ALL SELECT 'ngo-mapa-acolhimento', 'Mapa do Acolhimento', 'Rede NOSSAS', 'psicologico_juridico', 'BR', 'Nacional', 'Todo o Brasil Online e Presencial', 'Conecta gratuitamente mulheres que sofrem ou sofreram violencia a psicologas e advogadas voluntarias', 'Cadastro rapido online', 'https://www.mapadoacolhimento.org', 'Atendimento sigiloso conduzido por voluntarias verificadas', 1
+  UNION ALL SELECT 'ngo-justiceiras', 'Projeto Justiceiras', 'Instituto Justiceiras', 'acolhimento_protecao', 'BR', 'Nacional', 'Todo o Brasil Online', 'Equipe multidisciplinar voluntaria para orientacao juridica psicologica medica e assistencial', 'WhatsApp e Formulario Web', 'https://justiceiras.org.br', 'Prefira navegar em aba anonima se houver risco', 1
+  UNION ALL SELECT 'ngo-odara-ba', 'Odara Instituto da Mulher Negra Salvador e Chapada Diamantina', 'Instituto Odara', 'acolhimento_protecao', 'BA', 'Salvador e Chapada Diamantina', 'Bahia Salvador Chapada Diamantina e interior', 'Organizacao feminista baiana com atuacao em Salvador e interior da Chapada Diamantina para saude e enfrentamento a violencia', 'Projetos territoriais e site', 'https://institutoodara.org.br', 'Atuacao sem fins lucrativos na Bahia', 1
+  UNION ALL SELECT 'ngo-tamojuntas', 'Organizacao TamoJuntas', 'Coletivo Nacional TamoJuntas', 'psicologico_juridico', 'BR', 'Nacional', 'Bahia Nordeste e todo o Brasil', 'Assessoria gratuita juridica psicologica e assistencial feita por mulheres', 'Solicitacao pelo site', 'https://tamojuntas.org.br', 'Acolhimento interseccional em linguagem simples', 1
+  UNION ALL SELECT 'ngo-americas-amigas', 'ONG Americas Amigas', 'Americas Amigas', 'saude_parto', 'BR', 'Nacional', 'Todo o Brasil', 'ONG que doa e realiza gratuitamente exames de mamografia ultrassom de mama e biopsias', 'Solicitacao pelo site', 'https://americasamigas.org.br', 'Atendimento gratuito para mulheres sem plano', 0
+  UNION ALL SELECT 'ngo-instituto-protea', 'Instituto Protea', 'ONG Instituto Protea', 'saude_parto', 'BR', 'Nacional', 'Sao Paulo e redes parceiras', 'Custeia gratuitamente consultas exames de imagem biopsias e tratamento de cancer de mama', 'Encaminhamento via site', 'https://institutoprotea.org.br', 'Voltado a mulheres sem plano privado', 0
+  UNION ALL SELECT 'ngo-casa-angela', 'Casa Angela Centro de Parto Humanizado', 'Associacao Comunitaria Monte Azul', 'saude_parto', 'SP', 'Sao Paulo', 'Sao Paulo SP SUS e apoio social', 'Casa de parto sem fins lucrativos que oferece pre natal e parto humanizado gratuito', 'Grupos gratuitos e presencial', 'https://casaangela.org.br', 'Atendimento gratuito para gestantes', 0
+  UNION ALL SELECT 'ngo-rede-feminina-cancer', 'Rede Feminina de Combate ao Cancer', 'Federacao Nacional das Redes Femininas', 'saude_parto', 'BR', 'Nacional', 'Todo o Brasil Nucleos regionais', 'Realiza exames preventivos Papanicolau e mama e acolhe mulheres gratuitamente', 'Presencial nas sedes regionais', 'https://redefemininanacional.org.br', 'Atendimento direto sem burocracia', 0
+  UNION ALL SELECT 'ngo-penhas-azmina', 'Instituto AzMina Rede PenhaS', 'Revista AzMina', 'acolhimento_protecao', 'BR', 'Nacional', 'Nacional App e Portal', 'Informacao clara sobre violencia contra a mulher rede de apoio e botao de alerta', 'Plataforma digital', 'https://penhas.com.br', 'Leitura aberta sem cadastro', 1
+  UNION ALL SELECT 'ngo-instituto-maria-da-penha', 'Instituto Maria da Penha IMP', 'ONG Instituto Maria da Penha', 'acolhimento_protecao', 'BR', 'Nacional', 'Nacional Fortaleza e Recife', 'Guias gratuitos sobre os 5 tipos de violencia Lei Maria da Penha e denuncias', 'Guias abertos no site', 'https://www.institutomariadapenha.org.br', 'Material aberto e gratuito', 0
+  UNION ALL SELECT 'ngo-reprograma', 'Reprograma', 'Iniciativa de Impacto Social em Tecnologia', 'cursos_renda', 'BR', 'Nacional', 'Todo o Brasil Turmas Online', 'Bolsas 100 por cento gratuitas de formacao em programacao e tecnologia para mulheres', 'Editais gratuitos', 'https://reprograma.com.br', '100 por cento gratuito com foco em autonomia', 0
+  UNION ALL SELECT 'ngo-rme', 'Rede Mulher Empreendedora Instituto RME', 'Instituto Rede Mulher Empreendedora', 'cursos_renda', 'BR', 'Nacional', 'Nacional Online e nucleos', 'Cursos gratuitos de empreendedorismo financas pessoais e geracao de renda', 'Trilhas gratuitas no site', 'https://irmesocial.org.br', 'Programas gratuitos para mulheres', 0
 ) s
 ON DUPLICATE KEY UPDATE
+  name = VALUES(name),
   summary = VALUES(summary),
   coverage = VALUES(coverage),
   website_url = VALUES(website_url),
+  privacy_note = VALUES(privacy_note),
   is_verified = 1,
   is_active = 1;
 
--- Limpa variável de sessão após o seed administrativo
 SET @current_partner_role = NULL;
 
 -- ----------------------------------------------------------------------------
--- 8. PRIVILÉGIOS MÍNIMOS / ROLES DE SEGURANÇA (Para aplicar em MySQL 8.0+)
+-- 8. ISOLAMENTO DE PRIVILEGIOS POR ROLES (EQUIVALENTE AO RLS PARA MYSQL 8.0+)
 -- ----------------------------------------------------------------------------
--- Em produção no MySQL 8.0+, execute os blocos abaixo com usuário admin:
+-- Em producao, conceda apenas leitura nas views DEFINER e execucao nas
+-- stored procedures validadas ao usuario publico da aplicacao:
 --
 -- CREATE ROLE IF NOT EXISTS 'app_anon_role', 'app_partner_role';
--- REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'app_anon_role';
 -- GRANT SELECT ON acolhemulher.vw_public_services_star TO 'app_anon_role';
 -- GRANT SELECT ON acolhemulher.vw_public_ngos_star TO 'app_anon_role';
 -- GRANT SELECT ON acolhemulher.vw_star_search_demand TO 'app_anon_role';
@@ -1080,4 +1302,5 @@ SET @current_partner_role = NULL;
 -- GRANT EXECUTE ON PROCEDURE acolhemulher.sp_record_star_search_demand TO 'app_anon_role';
 -- GRANT EXECUTE ON PROCEDURE acolhemulher.sp_record_voice_search_relational TO 'app_anon_role';
 -- GRANT EXECUTE ON PROCEDURE acolhemulher.sp_register_ngo_candidate TO 'app_anon_role';
--- (app_anon_role NÃO tem INSERT/UPDATE/DELETE em nenhuma tabela base!)
+-- ============================================================================
+
