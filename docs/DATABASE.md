@@ -34,16 +34,167 @@ O frontend consulta `services` e `ngos` quando o Supabase está configurado. O c
 
 A migration 005 cria/atualiza a função `register_ngo_candidate`, utilizada pelo fluxo de cadastro de ONG no contexto do catálogo. A função aplica validações e controles de duplicidade no banco. A gravação depende da migration correspondente e de o Supabase estar acessível.
 
-## 4. Modelo analítico
+## 4. Arquitetura do banco — Star Schema
 
-As migrations 004–006 introduzem um modelo dimensional com dimensões de calendário, categoria, região, canal e atributos normalizados de catálogo/organização, além de fatos de demanda e voz. Entre os objetos identificados no código estão:
+O banco possui duas áreas com finalidades diferentes:
 
-- Dimensões: `dim_dates`, `dim_categories`, `dim_regions`, `dim_access_channels`, `dim_organizations`, `dim_ngo_areas`, `dim_subcategories`, `dim_access_modes`, `dim_voice_intents` e `dim_voice_keywords`.
-- Fatos de voz: `fact_voice_searches` e `fact_voice_search_keywords`.
-- Views consultadas pelo frontend: `vw_star_search_demand`, `vw_star_demand_totals` e `vw_star_voice_searches`.
-- Estrutura legada: `search_demand_stats`, criada na migration 003 e mantida como fallback de leitura no código de analytics.
+1. **Operacional (OLTP):** mantém o catálogo consultado pela aplicação e os dados de administração das organizações parceiras.
+2. **Analítica (OLAP):** organiza as pesquisas em tabelas fato e dimensões para permitir análises por período, assunto, localização e canal de acesso.
 
-A migration 004 também introduz a estrutura de demanda em Star Schema. O código de analytics tenta registrar a demanda pela RPC `record_star_search_demand` e usa `record_anonymous_search_demand` como fallback legado.
+O Star Schema está implementado principalmente nas migrations 004 e 006. Ele é formado por duas tabelas fato que compartilham dimensões: a fato de demanda de pesquisa e a fato de pesquisas por voz. Essa organização também pode ser entendida como uma pequena *constelação de fatos*.
+
+### 4.1 Desenho gráfico do Star Schema
+
+O diagrama abaixo representa as relações de chave estrangeira definidas nas migrations. As tabelas fato ficam no centro; as dimensões fornecem o contexto para analisar cada registro.
+
+```mermaid
+erDiagram
+    DIM_DATES ||--o{ FACT_SEARCH_DEMAND : "date_sk"
+    DIM_CATEGORIES ||--o{ FACT_SEARCH_DEMAND : "category_sk"
+    DIM_REGIONS ||--o{ FACT_SEARCH_DEMAND : "region_sk"
+    DIM_ACCESS_CHANNELS ||--o{ FACT_SEARCH_DEMAND : "channel_sk"
+
+    DIM_DATES ||--o{ FACT_VOICE_SEARCHES : "date_sk"
+    DIM_CATEGORIES ||--o{ FACT_VOICE_SEARCHES : "category_sk"
+    DIM_REGIONS ||--o{ FACT_VOICE_SEARCHES : "region_sk"
+    DIM_ACCESS_CHANNELS ||--o{ FACT_VOICE_SEARCHES : "channel_sk"
+    DIM_VOICE_INTENTS ||--o{ FACT_VOICE_SEARCHES : "intent_sk"
+
+    DIM_CATEGORIES ||--o{ DIM_VOICE_INTENTS : "category_sk"
+    FACT_VOICE_SEARCHES ||--o{ FACT_VOICE_SEARCH_KEYWORDS : "voice_fact_sk"
+    DIM_VOICE_KEYWORDS ||--o{ FACT_VOICE_SEARCH_KEYWORDS : "keyword_sk"
+
+    DIM_DATES {
+        int date_sk PK
+        date full_date
+        int year
+        int month
+        int day
+    }
+    DIM_CATEGORIES {
+        smallint category_sk PK
+        text category_key
+        text label
+    }
+    DIM_REGIONS {
+        bigint region_sk PK
+        char state_code
+        text state_name
+        text macro_region
+        text city_name
+        text city_normalized
+    }
+    DIM_ACCESS_CHANNELS {
+        smallint channel_sk PK
+        text channel_key
+        text channel_label
+    }
+    FACT_SEARCH_DEMAND {
+        bigint fact_id PK
+        int date_sk FK
+        smallint category_sk FK
+        bigint region_sk FK
+        smallint channel_sk FK
+        bigint search_count
+    }
+    DIM_VOICE_INTENTS {
+        smallint intent_sk PK
+        smallint category_sk FK
+        text intent_key
+    }
+    FACT_VOICE_SEARCHES {
+        bigint voice_fact_sk PK
+        int date_sk FK
+        smallint intent_sk FK
+        smallint category_sk FK
+        bigint region_sk FK
+        smallint channel_sk FK
+        text utterance_normalized
+        boolean had_cep_spoken
+        smallint word_count
+        int search_count
+    }
+    DIM_VOICE_KEYWORDS {
+        int keyword_sk PK
+        text keyword_normalized
+    }
+    FACT_VOICE_SEARCH_KEYWORDS {
+        bigint voice_fact_sk PK, FK
+        int keyword_sk PK, FK
+        int hit_count
+    }
+```
+
+**Como ler o desenho:**
+- `FACT_SEARCH_DEMAND` é a fato principal de volume de pesquisas. Seu grão é uma linha agregada por combinação de data, categoria, região e canal.
+- `FACT_VOICE_SEARCHES` registra as pesquisas por voz de forma relacional, acrescentando a intenção identificada e a consulta normalizada.
+- `FACT_VOICE_SEARCH_KEYWORDS` é uma tabela associativa que relaciona cada registro de pesquisa por voz às palavras-chave encontradas.
+- `DIM_VOICE_INTENTS` também referencia `DIM_CATEGORIES`, relacionando a intenção reconhecida ao assunto correspondente.
+
+### 4.2 Tabelas do Star Schema
+
+| Grupo | Tabela | Papel no modelo |
+|---|---|---|
+| Fato | `fact_search_demand` | Contagem agregada de pesquisas por data, categoria, região e canal |
+| Fato | `fact_voice_searches` | Contagem e atributos normalizados das pesquisas por voz |
+| Associativa | `fact_voice_search_keywords` | Relaciona pesquisas por voz às palavras-chave identificadas |
+| Dimensão | `dim_dates` | Calendário: data, dia, mês, ano e atributos temporais |
+| Dimensão | `dim_categories` | Assuntos/categorias pesquisados |
+| Dimensão | `dim_regions` | UF, nome do estado, macrorregião e município normalizado |
+| Dimensão | `dim_access_channels` | Origem/canal da pesquisa, como web ou voz |
+| Dimensão | `dim_voice_intents` | Intenção identificada na pesquisa por voz |
+| Dimensão | `dim_voice_keywords` | Vocabulário normalizado extraído das pesquisas por voz |
+
+**Métricas e atributos das fatos:**
+- Na `fact_search_demand`, a métrica principal é `search_count`.
+- Na `fact_voice_searches`, são armazenados `search_count`, `word_count`, `had_cep_spoken` e `utterance_normalized`.
+- Na `fact_voice_search_keywords`, `hit_count` registra a ocorrência da palavra-chave relacionada à pesquisa.
+
+### 4.3 Tabelas operacionais e de apoio (fora do núcleo fato/dimensão)
+
+Estas tabelas dão suporte ao catálogo, à administração e à normalização dos dados. Elas não devem ser interpretadas como fatos centrais do Star Schema.
+
+| Tabela | Finalidade |
+|---|---|
+| `services` | Catálogo de serviços públicos e pontos de atendimento |
+| `ngos` | Catálogo de ONGs e projetos de apoio |
+| `partner_profiles` | Perfil e papel de organizações parceiras/administradoras |
+| `tags` | Vocabulário de etiquetas para serviços |
+| `service_tags` | Associação muitos-para-muitos entre serviços e etiquetas |
+| `ngo_categories` | Associação entre ONGs e categorias |
+| `dim_organizations` | Domínio normalizado de organizações |
+| `dim_ngo_areas` | Domínio normalizado de áreas de atuação de ONGs |
+| `dim_subcategories` | Domínio normalizado de subcategorias de serviços |
+| `dim_access_modes` | Domínio normalizado de modalidades de acesso |
+| `ngo_help_items` | Itens de ajuda associados a uma ONG |
+
+As tabelas `dim_organizations`, `dim_ngo_areas`, `dim_subcategories` e `dim_access_modes` apoiam a normalização 3FN do catálogo. Apesar do prefixo `dim_`, elas não fazem parte das ligações centrais das duas tabelas fato exibidas no diagrama acima.
+
+### 4.4 Views de consulta analítica
+
+O frontend consulta views para consumir os dados já relacionados às dimensões:
+
+| View | Conteúdo |
+|---|---|
+| `vw_star_search_demand` | Pesquisas agregadas com data, categoria, região e canal |
+| `vw_star_demand_totals` | Total agregado de pesquisas |
+| `vw_star_voice_searches` | Pesquisas por voz com intenção, categoria, região e consulta normalizada |
+
+Também existem views operacionais `vw_services_normalized` e `vw_ngos_normalized`, usadas para expor os dados do catálogo em formato normalizado.
+
+### 4.5 Estrutura legada
+
+A tabela `search_demand_stats`, criada na migration 003, é uma estrutura anterior ao Star Schema. O código ainda tenta consultá-la como fallback quando não consegue obter os dados da view `vw_star_search_demand`. Portanto, ela deve ser identificada como legado, e não como parte do modelo dimensional atual.
+
+### 4.6 Fluxo resumido dos dados
+
+1. A aplicação identifica a categoria, a região (UF/município) e o canal da pesquisa.
+2. A RPC `record_star_search_demand` registra/incrementa a combinação nas dimensões e em `fact_search_demand`.
+3. Para pesquisas por voz, a aplicação sanitiza a transcrição e chama `record_voice_search_relational`.
+4. A RPC relaciona a pesquisa com data, intenção, categoria, região e canal em `fact_voice_searches`, além de registrar palavras-chave em `fact_voice_search_keywords`.
+5. O frontend lê as views analíticas para apresentar os indicadores.
+
+> **Nota sobre privacidade:** a aplicação remove dígitos e normaliza a transcrição antes do envio da pesquisa por voz, mas a tabela `fact_voice_searches` persiste o campo `utterance_normalized`. Portanto, o modelo não deve ser descrito como se não armazenasse nenhum texto de pesquisa. Esse conteúdo normalizado, assim como os atributos de região, exige controle de acesso e política de retenção.
 
 ## 5. O que é registrado em analytics
 
