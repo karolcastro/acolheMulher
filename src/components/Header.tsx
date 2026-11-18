@@ -61,10 +61,11 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             onClick={onQuickExit}
             title="Fechar agora e ir para o Google (tecla ESC)"
+            aria-label="Sair rápido (tecla ESC)"
             className="min-h-[40px] inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2"
           >
             <LogOut className="w-3.5 h-3.5 shrink-0" />
-            <span>Sair Rápido</span>
+            <span>Sair</span>
           </button>
         </div>
 
