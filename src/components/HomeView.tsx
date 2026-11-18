@@ -7,6 +7,11 @@ import { recordAnonymousSearchDemand, recordVoiceSearchRelational } from '../uti
 import { formatLocationDisplay } from '../utils/cepProximity';
 import heroWomanRefugeImg from '../assets/images/hero_woman_refuge_1794861297510.jpg';
 import {
+  DAILY_TIPS,
+  WOMEN_RIGHTS_SIMPLE,
+  getDailyTipIndex,
+} from '../data/dailyTipsAndRightsData';
+import {
   MapPin,
   Scale,
   HeartHandshake,
@@ -20,7 +25,11 @@ import {
   Share2,
   WifiOff,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Lightbulb,
+  BookOpenCheck,
+  RefreshCw,
+  ArrowRight
 } from 'lucide-react';
 
 interface HomeViewProps {
@@ -46,6 +55,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [selectedNeed, setSelectedNeed] = useState<AppSection | null>(null);
   const [lastUserNeedText, setLastUserNeedText] = useState<string | null>(null);
   const [agentOpen, setAgentOpen] = useState<boolean>(Boolean(currentLocation));
+  const [tipIndex, setTipIndex] = useState<number>(() => getDailyTipIndex());
+  const activeTip = DAILY_TIPS[tipIndex % DAILY_TIPS.length];
+  const highlightedRights = WOMEN_RIGHTS_SIMPLE.slice(0, 3);
 
   const handleHeroSearchResult = (payload: SearchResolvedPayload) => {
     setAgentOpen(true);
@@ -436,6 +448,113 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-pink-700 group-hover:translate-x-0.5 transition-all shrink-0" />
                 </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Zona 2B: Dica do Dia + Seus Direitos em Linguagem Simples */}
+      <section aria-label="Dica do dia e direitos das mulheres" className="bg-white border-b border-slate-200 py-12 sm:py-14">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+          {/* Dica do Dia */}
+          <div className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50/80 via-white to-pink-50/70 p-6 sm:p-7 shadow-xs">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+              <div className="flex items-start gap-4 min-w-0">
+                <div className="w-12 h-12 rounded-2xl bg-purple-900 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Lightbulb className="w-6 h-6 text-pink-300" />
+                </div>
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-pink-700">
+                    <span>Dica do Dia</span>
+                    <span className="text-slate-300" aria-hidden="true">·</span>
+                    <span className="text-purple-900">{activeTip.categoryLabel}</span>
+                  </div>
+                  <h2 className="text-lg sm:text-xl font-display font-bold text-slate-900 leading-snug">
+                    {activeTip.title}
+                  </h2>
+                  <p className="text-sm text-slate-700 leading-relaxed max-w-3xl">
+                    {activeTip.message}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5 shrink-0 lg:self-center">
+                {activeTip.actionLabel && activeTip.actionSection && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenSection(activeTip.actionSection!)}
+                    className="min-h-[42px] inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-900 hover:bg-purple-950 text-white text-xs font-semibold transition-colors whitespace-nowrap"
+                  >
+                    <span>{activeTip.actionLabel}</span>
+                    <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setTipIndex((prev) => (prev + 1) % DAILY_TIPS.length)}
+                  className="min-h-[42px] inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-purple-50 border border-purple-200 text-purple-900 text-xs font-semibold transition-colors whitespace-nowrap"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-pink-700 shrink-0" />
+                  <span>Ver outra dica</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Seus Direitos sem Complicação */}
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 pb-4 border-b border-slate-200">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-pink-700 flex items-center gap-1.5">
+                  <BookOpenCheck className="w-4 h-4 shrink-0" />
+                  <span>Sem termos jurídicos difíceis</span>
+                </p>
+                <h2 className="text-xl sm:text-2xl font-display font-bold text-slate-900">
+                  Seus direitos explicados de forma fácil
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-600 max-w-2xl">
+                  Respostas diretas para dúvidas comuns sobre medida protetiva, sair de casa com segurança, pensão, parto e proteção no trabalho.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleOpenSection('direitos')}
+                className="min-h-[44px] inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-900 to-purple-900 hover:from-pink-600 hover:to-purple-700 text-white text-xs font-semibold transition-all whitespace-nowrap shrink-0 self-start sm:self-auto shadow-xs"
+              >
+                <span>Ver todos os direitos ({WOMEN_RIGHTS_SIMPLE.length})</span>
+                <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+              {highlightedRights.map((right) => (
+                <article
+                  key={right.id}
+                  className="bg-[#F8FAFC] rounded-2xl border border-slate-200/90 hover:border-purple-300 p-5 flex flex-col justify-between gap-4 transition-all"
+                >
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-pink-700">
+                      {right.themeLabel}
+                    </div>
+                    <h3 className="text-base font-display font-bold text-slate-900 leading-snug">
+                      {right.question}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                      {right.plainAnswer}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenSection(right.relatedSection)}
+                    className="min-h-[40px] inline-flex items-center justify-between gap-2 w-full pt-3 border-t border-slate-200 text-xs font-semibold text-purple-900 hover:text-pink-700 transition-colors text-left"
+                  >
+                    <span>{right.ctaLabel}</span>
+                    <ChevronRight className="w-4 h-4 shrink-0" />
+                  </button>
+                </article>
               ))}
             </div>
           </div>

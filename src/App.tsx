@@ -3,6 +3,7 @@ import { Header } from './components/Header';
 import { HomeView } from './components/HomeView';
 import { CategoryView } from './components/CategoryView';
 import { NgosView } from './components/NgosView';
+import { RightsView } from './components/RightsView';
 import { PwaShowcase } from './components/PwaShowcase';
 import { NgoPartnerArea } from './components/NgoPartnerArea';
 import { CamouflageView } from './components/CamouflageView';
@@ -171,6 +172,14 @@ function AppContent() {
           />
         )}
 
+        {activeSection === 'direitos' && (
+          <RightsView
+            currentLocation={currentLocation}
+            onSelectSection={handleNavSectionChange}
+            onBackToHome={() => setActiveSection('inicio')}
+          />
+        )}
+
         {activeSection === 'ongs_apoio' && (
           <NgosView
             currentLocation={currentLocation}
@@ -266,6 +275,13 @@ function AppContent() {
                   className="py-1 text-slate-200 hover:text-pink-300 transition-colors text-left"
                 >
                   Início
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNavSectionChange('direitos')}
+                  className="py-1 text-slate-200 hover:text-pink-300 transition-colors text-left"
+                >
+                  Seus Direitos (Fácil)
                 </button>
                 <button
                   type="button"

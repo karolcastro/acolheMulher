@@ -14,11 +14,12 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveSection,
   onQuickExit
 }) => {
-  const navLinks: { id: AppSection; label: string }[] = [
+  const navLinks: { id: AppSection; label: string; mobileLabel?: string }[] = [
     { id: 'inicio', label: 'Início' },
+    { id: 'direitos', label: 'Seus Direitos', mobileLabel: 'Direitos' },
     { id: 'ongs_apoio', label: 'ONGs' },
-    { id: 'emergencia', label: 'Emergência 24h' },
-    { id: 'app', label: 'Baixar App' },
+    { id: 'emergencia', label: 'Emergência 24h', mobileLabel: 'Emergência' },
+    { id: 'app', label: 'Baixar App', mobileLabel: 'App' },
   ];
 
   return (
@@ -74,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Compact Mobile Nav */}
       <nav
         aria-label="Navegação móvel"
-        className="flex sm:hidden border-t border-slate-100 px-3 h-11 items-center justify-around text-xs font-medium text-slate-600 bg-white/95"
+        className="flex sm:hidden border-t border-slate-100 px-2 h-11 items-center justify-around text-xs font-medium text-slate-600 bg-white/95"
       >
         {navLinks.map((link) => {
           const isActive = activeSection === link.id;
@@ -83,11 +84,11 @@ export const Header: React.FC<HeaderProps> = ({
               key={link.id}
               type="button"
               onClick={() => setActiveSection(link.id)}
-              className={`min-h-[36px] px-2.5 py-1 rounded-lg whitespace-nowrap shrink-0 transition-colors ${
+              className={`min-h-[36px] px-2 py-1 rounded-lg whitespace-nowrap shrink-0 transition-colors ${
                 isActive ? 'text-purple-900 bg-pink-50 font-semibold' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              {link.label}
+              {link.mobileLabel || link.label}
             </button>
           );
         })}

@@ -14,6 +14,7 @@ export type AppSection =
   | 'saude'
   | 'cursos'
   | 'emergencia'
+  | 'direitos'
   | 'ongs_apoio'
   | 'app'
   | 'ongs';
